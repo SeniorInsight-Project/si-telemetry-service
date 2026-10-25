@@ -1,0 +1,8 @@
+package com.seniorinsight.telemetry.dto;
+import java.time.Instant;
+import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.seniorinsight.telemetry.domain.TelemetriaWearable;
+public record TelemetriaWearableResponseDTO(UUID id,@JsonProperty("idoso_id") UUID idosoId,@JsonProperty("device_id") String deviceId,@JsonProperty("device_model") String deviceModel,String provider,@JsonProperty("frequencia_cardiaca_bpm") Integer frequenciaCardiacaBpm,@JsonProperty("frequencia_cardiaca_repouso_bpm") Integer frequenciaCardiacaRepousoBpm,@JsonProperty("variabilidade_cardiaca_hrv") Double variabilidadeCardiacaHrv,@JsonProperty("passos_contagem") Integer passosContagem,@JsonProperty("distancia_metros") Double distanciaMetros,@JsonProperty("calorias_kcal") Double caloriasKcal,@JsonProperty("queda_detectada") Boolean quedaDetectada,@JsonProperty("forca_impacto_g") Double forcaImpactoG,@JsonProperty("confianca_queda") Double confiancaQueda,@JsonProperty("nivel_bateria") Integer nivelBateria,@JsonProperty("saturacao_oxigenio") Double saturacaoOxigenio,@JsonProperty("coletado_em") Instant coletadoEm,@JsonProperty("criado_em") Instant criadoEm,@JsonProperty("status_processamento") String statusProcessamento) {
+ public static TelemetriaWearableResponseDTO fromEntity(TelemetriaWearable t,String status){return new TelemetriaWearableResponseDTO(t.getId(),t.getIdosoId(),t.getDispositivoId(),t.getModeloDispositivo(),t.getProvedor(),t.getFrequenciaCardiaca(),t.getFrequenciaCardiacaRepouso(),t.getVariabilidadeCardiaca(),t.getPassos(),t.getDistanciaMetros(),t.getCaloriasQueimadas(),t.getQuedaDetectada(),t.getForcaImpactoG(),t.getConfiancaQueda(),t.getNivelBateria(),t.getSaturacaoOxigenio(),t.getColetadoEm(),t.getCriadoEm(),status);}
+}
