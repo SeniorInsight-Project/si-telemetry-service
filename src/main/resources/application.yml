@@ -1,0 +1,98 @@
+# Sem segredos aqui: credenciais e endereços vêm de variáveis de ambiente (ver .env.example).
+spring:
+  application:
+    name: telemetry-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:seniorinsight}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      # search_path da conexão: JPA, SQL nativo e Flyway enxergam só o schema do serviço.
+      schema: telemetry
+
+  flyway:
+    schemas: telemetry
+    default-schema: telemetry
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    publisher-confirm-type: correlated
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+
+server:
+  port: ${SERVER_PORT:8080}
+  # O serviço fica atrás do API Gateway: respeita X-Forwarded-* (host, proto, prefix) nas URLs geradas.
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+telemetry:
+  outbox:
+    relay:
+      intervalo: PT1S
+      tamanho-lote: 100
+      timeout-confirmacao: PT5S
+  mensageria:
+    prefetch: 10
+  particoes:
+    # Garante a partição mensal de medicao do mês atual e dos próximos meses.
+    meses-a-frente: 2
+    cron: "0 0 3 * * *"
+  open-wearables:
+    enabled: ${OPENWEARABLES_ENABLED:false}
+    base-url: ${OPENWEARABLES_BASE_URL:http://localhost:8000}
+    api-key: ${OPENWEARABLES_API_KEY:}
+    timeout-conexao: PT2S
+    timeout-leitura: PT10S
+  care-service:
+    base-url: ${CARE_SERVICE_URL:http://localhost:8082}
+    timeout-conexao: PT2S
+    timeout-leitura: PT3S
+
+resilience4j:
+  retry:
+    instances:
+      openWearables:
+        max-attempts: 3
+        wait-duration: PT0.5S
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        # Só falhas de rede/timeout e 5xx; 4xx não melhora repetindo.
+        retry-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+  circuitbreaker:
+    instances:
+      openWearables:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: PT30S
+        permitted-number-of-calls-in-half-open-state: 2
+        record-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
