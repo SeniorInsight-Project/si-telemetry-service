@@ -12,6 +12,9 @@ spring:
     locations: classpath:db/migration
 server:
   port: ${SERVER_PORT:8081}
+spring.data.redis:
+  host: ${REDIS_HOST:localhost}
+  port: ${REDIS_PORT:6379}
 seniorinsight:
   care-service:
     base-url: ${CARE_SERVICE_BASE_URL:http://localhost:8080}
@@ -25,3 +28,8 @@ seniorinsight:
     day-start: ${SYNC_MONITORING_DAY_START:07:00}
     day-end: ${SYNC_MONITORING_DAY_END:22:00}
     time-zone: ${SYNC_MONITORING_TIME_ZONE:America/Sao_Paulo}
+  telemetry-today:
+    cache-enabled: ${TELEMETRY_TODAY_CACHE_ENABLED:true}
+    cache-ttl: ${TELEMETRY_TODAY_CACHE_TTL:15m}
+    stale-after: ${TELEMETRY_TODAY_STALE_AFTER:48h}
+    time-zone: ${TELEMETRY_TODAY_TIME_ZONE:America/Sao_Paulo}
