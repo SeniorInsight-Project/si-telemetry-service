@@ -16,3 +16,11 @@ por chamada interna ao `care-service` antes da leitura.
 O lote de telemetria aceita `battery_percentage`, `app_version` e `synced_at`. O evento
 `consent.changed` atualiza a projeção local de `active_data_types`, portanto uma autorização
 revogada aparece no status sem o telemetry-service acessar o banco do care-service.
+
+## HU-028 — alerta de perda de sincronização
+
+Um job verifica a projeção a cada 15 minutos. Por padrão, considera perda após 3 horas
+sem lote entre 07:00 e 22:00 (`America/Sao_Paulo`); o limiar, a janela, o timezone e o
+intervalo são configuráveis por `SYNC_MONITORING_*`. A perda é publicada uma única vez
+por ciclo e o primeiro lote posterior publica o retorno. Os contratos CloudEvent v1 estão
+em [`docs/contracts/telemetry-signal-v1.md`](docs/contracts/telemetry-signal-v1.md).

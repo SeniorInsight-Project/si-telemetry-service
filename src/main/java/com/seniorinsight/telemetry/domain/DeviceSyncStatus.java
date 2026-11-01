@@ -23,6 +23,8 @@ public class DeviceSyncStatus {
     private Integer batteryPercentage;
     @Column(name = "app_version", length = 50)
     private String appVersion;
+    @Column(name = "signal_lost", nullable = false)
+    private boolean signalLost;
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "active_data_types", columnDefinition = "jsonb", nullable = false)
     private List<String> activeDataTypes = new ArrayList<>();
@@ -43,6 +45,18 @@ public class DeviceSyncStatus {
         if (version != null && !version.isBlank()) this.appVersion = version;
     }
 
+    public boolean markSignalLost() {
+        if (signalLost) return false;
+        signalLost = true;
+        return true;
+    }
+
+    public boolean markSignalRecovered() {
+        if (!signalLost) return false;
+        signalLost = false;
+        return true;
+    }
+
     public void updateActiveDataTypes(List<String> types) {
         this.activeDataTypes = types == null ? new ArrayList<>() : new ArrayList<>(types);
     }
@@ -51,5 +65,6 @@ public class DeviceSyncStatus {
     public Instant getLastSyncAt() { return lastSyncAt; }
     public Integer getBatteryPercentage() { return batteryPercentage; }
     public String getAppVersion() { return appVersion; }
+    public boolean isSignalLost() { return signalLost; }
     public List<String> getActiveDataTypes() { return List.copyOf(activeDataTypes); }
 }

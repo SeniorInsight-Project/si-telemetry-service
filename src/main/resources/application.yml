@@ -19,3 +19,9 @@ seniorinsight:
     enabled: ${OPENWEARABLES_ENABLED:false}
     base-url: ${OPENWEARABLES_BASE_URL:https://api.openwearables.io}
     api-key: ${OPENWEARABLES_API_KEY:}
+  sync-monitoring:
+    interval-ms: ${SYNC_MONITORING_INTERVAL_MS:900000}
+    threshold: ${SYNC_MONITORING_THRESHOLD:PT3H}
+    day-start: ${SYNC_MONITORING_DAY_START:07:00}
+    day-end: ${SYNC_MONITORING_DAY_END:22:00}
+    time-zone: ${SYNC_MONITORING_TIME_ZONE:America/Sao_Paulo}
