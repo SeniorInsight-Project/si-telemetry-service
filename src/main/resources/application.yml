@@ -13,6 +13,8 @@ spring:
 server:
   port: ${SERVER_PORT:8081}
 seniorinsight:
+  care-service:
+    base-url: ${CARE_SERVICE_BASE_URL:http://localhost:8080}
   integrations.openwearables:
     enabled: ${OPENWEARABLES_ENABLED:false}
     base-url: ${OPENWEARABLES_BASE_URL:https://api.openwearables.io}
