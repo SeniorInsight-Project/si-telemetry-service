@@ -3,6 +3,7 @@ package com.seniorinsight.telemetry.service;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ public class DeviceStatusService {
 
     public DeviceStatusService(DeviceSyncStatusRepository repository) { this(repository, null); }
 
+    @Autowired
     public DeviceStatusService(DeviceSyncStatusRepository repository, ApplicationEventPublisher publisher) {
         this.repository = repository;
         this.publisher = publisher;
@@ -27,7 +29,10 @@ public class DeviceStatusService {
     public void registerSync(UUID idosoId, Instant syncedAt, Integer battery, String appVersion) {
         DeviceSyncStatus status = repository.findById(idosoId)
                 .orElseGet(() -> new DeviceSyncStatus(idosoId, syncedAt, battery, appVersion));
-        boolean recovered = status.isSignalLost();
+        if (syncedAt.isBefore(status.getLastSyncAt())) {
+            return;
+        }
+        boolean recovered = status.isSignalLost() && syncedAt.isAfter(status.getLastSyncAt());
         status.registerSync(syncedAt, battery, appVersion);
         if (recovered) status.markSignalRecovered();
         repository.save(status);
@@ -47,7 +52,8 @@ public class DeviceStatusService {
     @Transactional(readOnly = true)
     public DeviceStatusResponseDTO getStatus(UUID idosoId) {
         return repository.findById(idosoId)
-                .map(status -> new DeviceStatusResponseDTO(status.getIdosoId(), status.getLastSyncAt(),
+                .map(status -> new DeviceStatusResponseDTO(status.getIdosoId(),
+                        Instant.EPOCH.equals(status.getLastSyncAt()) ? null : status.getLastSyncAt(),
                         status.getBatteryPercentage(), status.getAppVersion(), status.getActiveDataTypes()))
                 .orElse(null);
     }

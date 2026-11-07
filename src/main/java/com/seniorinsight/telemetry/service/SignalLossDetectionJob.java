@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,6 +26,7 @@ public class SignalLossDetectionJob {
     private final LocalTime dayEnd;
     private final ZoneId zoneId;
 
+    @Autowired
     public SignalLossDetectionJob(DeviceSyncStatusRepository repository, ApplicationEventPublisher publisher,
             @Value("${seniorinsight.sync-monitoring.time-zone:America/Sao_Paulo}") ZoneId zoneId,
             @Value("${seniorinsight.sync-monitoring.threshold:PT3H}") Duration threshold,
@@ -64,7 +66,8 @@ public class SignalLossDetectionJob {
     }
 
     private boolean isLate(DeviceSyncStatus status, Instant now) {
-        return !status.getLastSyncAt().plus(threshold).isAfter(now);
+        Instant lastSyncAt = status.getLastSyncAt();
+        return !Instant.EPOCH.equals(lastSyncAt) && !lastSyncAt.plus(threshold).isAfter(now);
     }
 
     private boolean isDaytime(LocalTime time) {

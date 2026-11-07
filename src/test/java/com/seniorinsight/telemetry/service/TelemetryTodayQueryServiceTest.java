@@ -109,6 +109,7 @@ class TelemetryTodayQueryServiceTest {
 
         assertThat(service.getToday(IDOSO_ID, "familiar-1", "FAMILIAR_ADMIN", "token")).isEqualTo(cached);
         verifyNoInteractions(telemetryRepository);
+        verify(cache).get("telemetry:today:" + IDOSO_ID + ":2026-11-01:batimentos,passos");
     }
 
     private void givenStatus(List<String> activeTypes, Instant lastSync) {

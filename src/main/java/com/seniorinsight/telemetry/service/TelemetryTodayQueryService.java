@@ -3,6 +3,7 @@ package com.seniorinsight.telemetry.service;
 import java.time.*;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,7 @@ public class TelemetryTodayQueryService {
     private final ZoneId zoneId;
     private final Duration staleAfter;
 
+    @Autowired
     public TelemetryTodayQueryService(TelemetriaWearableRepository telemetryRepository,
             DeviceStatusService statusService, CareAccessClient careAccessClient,
             TelemetryTodayCache cache,
@@ -54,19 +56,17 @@ public class TelemetryTodayQueryService {
         DeviceStatusResponseDTO deviceStatus = statusService.getStatus(idosoId);
         Set<String> authorized = deviceStatus == null || deviceStatus.activeDataTypes() == null
                 ? Set.of() : deviceStatus.activeDataTypes().stream()
-                        .map(String::toLowerCase).collect(Collectors.toUnmodifiableSet());
-        String key = "telemetry:today:" + idosoId + ":" + authorized.stream().sorted().collect(Collectors.joining(","));
-        Optional<TelemetryTodayResponseDTO> cached = cache.get(key);
-                if (cached.isPresent()) {
-                        TelemetryTodayResponseDTO response = cached.get();
-                        if (isStale(response.lastUpdatedAt(), clock.instant())) {
-                                return staleResponse(idosoId, response.lastUpdatedAt());
-                        }
-                        return response;
-                }
-
+                        .map(tipo -> tipo.toLowerCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
         Instant now = clock.instant();
         LocalDate today = now.atZone(zoneId).toLocalDate();
+        String key = "telemetry:today:" + idosoId + ":" + today + ":"
+                + authorized.stream().sorted().collect(Collectors.joining(","));
+        Optional<TelemetryTodayResponseDTO> cached = cache.get(key);
+        if (cached.isPresent()) {
+            TelemetryTodayResponseDTO response = cached.get();
+            return isStale(response.lastUpdatedAt(), now) ? staleResponse(idosoId, response.lastUpdatedAt()) : response;
+        }
+
         Instant start = today.atStartOfDay(zoneId).toInstant();
         Instant end = today.plusDays(1).atStartOfDay(zoneId).toInstant();
         List<TelemetriaWearable> readings = telemetryRepository
@@ -80,10 +80,10 @@ public class TelemetryTodayQueryService {
         if (stale) {
             response = staleResponse(idosoId, lastUpdated);
         } else {
-            Integer steps = authorized.contains("steps") ? readings.stream()
+            Integer steps = (authorized.contains("steps") || authorized.contains("passos")) ? readings.stream()
                     .map(TelemetriaWearable::getPassos).filter(Objects::nonNull)
                     .reduce(0, Integer::sum) : null;
-            Integer heartRate = authorized.contains("heart_rate") ? readings.stream()
+            Integer heartRate = (authorized.contains("heart_rate") || authorized.contains("batimentos")) ? readings.stream()
                     .filter(r -> r.getFrequenciaCardiaca() != null)
                     .max(Comparator.comparing(TelemetriaWearable::getColetadoEm))
                     .map(TelemetriaWearable::getFrequenciaCardiaca).orElse(null) : null;

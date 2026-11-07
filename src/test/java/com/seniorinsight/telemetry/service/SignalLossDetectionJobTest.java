@@ -84,6 +84,34 @@ class SignalLossDetectionJobTest {
         assertThat(status.isSignalLost()).isFalse();
     }
 
+    @Test
+    void naoAlertaParaCadastroQueAindaNaoSincronizou() {
+        var status = new DeviceSyncStatus(UUID.randomUUID(), Instant.EPOCH, null, null);
+        when(repository.findAll()).thenReturn(List.of(status));
+
+        job.checkAt(local("2026-11-01T12:00:00"));
+
+        verifyNoInteractions(publisher);
+        assertThat(status.isSignalLost()).isFalse();
+    }
+
+    @Test
+    void naoPublicaRetornoParaLoteRepetidoOuAtrasado() {
+        UUID idosoId = UUID.randomUUID();
+        Instant lastSync = local("2026-11-01T09:00:00");
+        var status = new DeviceSyncStatus(idosoId, lastSync, null, null);
+        status.markSignalLost();
+        when(repository.findById(idosoId)).thenReturn(java.util.Optional.of(status));
+        var service = new DeviceStatusService(repository, publisher);
+
+        service.registerSync(idosoId, lastSync.minusSeconds(60), null, null);
+        service.registerSync(idosoId, lastSync, null, null);
+
+        verifyNoInteractions(publisher);
+        assertThat(status.getLastSyncAt()).isEqualTo(lastSync);
+        assertThat(status.isSignalLost()).isTrue();
+    }
+
     private Instant local(String value) {
         return java.time.LocalDateTime.parse(value).atZone(ZONE).toInstant();
     }
