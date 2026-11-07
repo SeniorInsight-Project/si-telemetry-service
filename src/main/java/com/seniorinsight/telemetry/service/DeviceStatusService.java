@@ -34,7 +34,8 @@ public class DeviceStatusService {
     @Transactional(readOnly = true)
     public DeviceStatusResponseDTO getStatus(UUID idosoId) {
         return repository.findById(idosoId)
-                .map(status -> new DeviceStatusResponseDTO(status.getIdosoId(), status.getLastSyncAt(),
+                .map(status -> new DeviceStatusResponseDTO(status.getIdosoId(),
+                        Instant.EPOCH.equals(status.getLastSyncAt()) ? null : status.getLastSyncAt(),
                         status.getBatteryPercentage(), status.getAppVersion(), status.getActiveDataTypes()))
                 .orElse(null);
     }
