@@ -5,8 +5,8 @@
 A exclusão remove o usuário vinculado no Open Wearables, apaga os registros
 identificáveis locais e mantém apenas contagens globais por categoria de sinal.
 O vínculo com o provedor fica em `usuario_open_wearables`. A ingestão (#5)
-deve preencher essa tabela. Medições legadas sem vínculo precisam ser
-reconciliadas antes de confirmar a exclusão.
+grava esse vínculo durante o provisionamento. Medições legadas sem vínculo
+verificável precisam ser reconciliadas antes de confirmar a exclusão.
 
 Os eventos `lgpd.erasure.requested` e `lgpd.erasure.completed` seguem o
 contrato do si-contracts. Uma impressão do identificador impede que mensagens
@@ -79,8 +79,14 @@ O serviço mantém o registro mais recente.
 Para projetar `tiposAtivos`, o consumidor de `consent.changed` espera um CloudEvent
 estruturado do care-service com `time` e `data` contendo `idosoId`, `tipo`
 (enum `TipoDado` de telemetry-v1), `destinatario` e `autorizado` (booleano).
-A tela do familiar usa somente consentimentos para `REDE`. A publicação desse
-payload pelo care-service depende de si-care-service#92.
+A tela do familiar usa somente consentimentos para `REDE`. O evento segue
+`consent.changed.v1` do si-contracts.
+
+A rotina `ColetarMedicoesAutorizadas` usa essa projeção para pedir ao Open
+Wearables somente séries autorizadas e confere a projeção de novo antes de
+gravar, inclusive se uma revogação chegar durante a requisição HTTP. Sem
+séries autorizadas a rotina não consulta o provedor. O agendamento e o vínculo
+com o usuário no provedor entram na integração da HU-023 (#5).
 
 O monitor de sincronização roda a cada 15 min entre 07:00 e 22:00 no fuso
 `America/Sao_Paulo` e registra perda após 3 h sem sincronizar. O primeiro
@@ -162,6 +168,13 @@ Igual ao si-identity-service: quem precisa publicar chama a porta `PublicadorEve
 Para tratar um novo tipo de evento, crie um bean `TratadorEvento` (em `application`) com a routing key e, se for preciso, inclua a routing key em `MensageriaConfig.EVENTOS_ASSINADOS`. Os tratadores de `consent.changed` e `lgpd.erasure.requested` chegam nas si-telemetry-service#3 e #4.
 
 ## Open Wearables
+
+Com `OPENWEARABLES_ENABLED=true`, configure também
+`OPENWEARABLES_VINCULO_SECRET` com um segredo estável de pelo menos 32 bytes.
+A coleta automática roda a cada 15 minutos por padrão (`TELEMETRY_COLETA_CRON`),
+consulta as séries permitidas pelo consentimento da rede e verifica novamente
+as permissões antes de gravar. A ingestão deduplica medições, atualiza os
+agregados diários e publica `telemetry.ingested` pelo outbox.
 
 O cliente fica em `adapters.out.openwearables` e implementa a porta `OpenWearables` (`provisionarUsuario` e `buscarLeituras`), sobre a API REST do Open Wearables (`POST /api/v1/users` e `GET /api/v1/users/{id}/timeseries`, paginada por cursor). Cada requisição tem:
 

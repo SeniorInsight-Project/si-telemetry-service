@@ -50,6 +50,10 @@ management:
         enabled: true
 
 telemetry:
+  coleta:
+    cron: "${TELEMETRY_COLETA_CRON:0 */15 * * * *}"
+    fuso: ${TELEMETRY_HOJE_FUSO:America/Sao_Paulo}
+    segredo-vinculo: ${OPENWEARABLES_VINCULO_SECRET:}
   sinal:
     cron: "${TELEMETRY_SINAL_CRON:0 */15 * * * *}"
     tolerancia: ${TELEMETRY_SINAL_TOLERANCIA:PT3H}

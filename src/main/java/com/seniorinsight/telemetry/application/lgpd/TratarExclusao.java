@@ -8,8 +8,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seniorinsight.telemetry.application.evento.TratadorEvento;
+import com.seniorinsight.telemetry.application.medicao.ReferenciaOpenWearables;
 import com.seniorinsight.telemetry.application.porta.entrada.EventoRecebido;
 import com.seniorinsight.telemetry.application.porta.saida.OpenWearables;
+import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.ExclusaoDadosRepositorio;
 import com.seniorinsight.telemetry.application.porta.saida.PublicadorEventos;
 import com.seniorinsight.telemetry.domain.evento.ExclusaoConcluida;
@@ -28,13 +30,18 @@ public class TratarExclusao implements TratadorEvento {
     private final ExclusaoDadosRepositorio repositorio;
     private final PublicadorEventos eventos;
     private final OpenWearables provedor;
+    private final VinculosOpenWearables vinculos;
+    private final ReferenciaOpenWearables referencias;
 
     public TratarExclusao(ObjectMapper json, ExclusaoDadosRepositorio repositorio, PublicadorEventos eventos,
-                          OpenWearables provedor) {
+                          OpenWearables provedor, VinculosOpenWearables vinculos,
+                          ReferenciaOpenWearables referencias) {
         this.json = json;
         this.repositorio = repositorio;
         this.eventos = eventos;
         this.provedor = provedor;
+        this.vinculos = vinculos;
+        this.referencias = referencias;
     }
 
     @Override
@@ -80,7 +87,12 @@ public class TratarExclusao implements TratadorEvento {
             return;
         }
         if ("IDOSO".equals(tipo)) {
-            repositorio.bloquearEBuscarUsuarioOpenWearables(titular).ifPresent(provedor::excluirUsuario);
+            var externo = repositorio.bloquearEBuscarUsuarioOpenWearables(titular)
+                    .or(() -> referencias.gerar(titular).flatMap(provedor::buscarUsuarioPorReferencia));
+            if (externo.isEmpty() && vinculos.temDadosLegados(titular)) {
+                throw new IllegalStateException("Exclusão aguardando a reconciliação do vínculo com o Open Wearables");
+            }
+            externo.ifPresent(provedor::excluirUsuario);
             repositorio.excluirEAnonimizar(titular);
         }
         eventos.publicar(new ExclusaoConcluida(protocolo, "telemetry-service"));

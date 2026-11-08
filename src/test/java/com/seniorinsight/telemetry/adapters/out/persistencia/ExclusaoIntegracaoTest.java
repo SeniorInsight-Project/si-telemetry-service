@@ -11,9 +11,11 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seniorinsight.telemetry.TesteIntegracao;
 import com.seniorinsight.telemetry.application.lgpd.TratarExclusao;
+import com.seniorinsight.telemetry.application.medicao.ReferenciaOpenWearables;
 import com.seniorinsight.telemetry.application.porta.entrada.EventoRecebido;
 import com.seniorinsight.telemetry.application.porta.saida.OpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.PublicadorEventos;
+import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.ExclusaoDadosRepositorio;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,8 @@ class ExclusaoIntegracaoTest {
     @Autowired EntityManager entidades;
     @Autowired ObjectMapper json;
     @Autowired PublicadorEventos eventos;
+    @Autowired VinculosOpenWearables vinculos;
+    @Autowired ReferenciaOpenWearables referencias;
     @Autowired ExclusaoDadosRepositorio repositorio;
 
     @Test
@@ -45,7 +49,7 @@ class ExclusaoIntegracaoTest {
                 """, titular);
         jdbc.update("INSERT INTO status_aparelho (idoso_id) VALUES (?)", titular);
         var provedor = mock(OpenWearables.class);
-        var tratador = new TratarExclusao(json, repositorio, eventos, provedor);
+        var tratador = new TratarExclusao(json, repositorio, eventos, provedor, vinculos, referencias);
 
         enviar(tratador, protocolo, titular);
         enviar(tratador, protocolo, titular);
@@ -66,7 +70,7 @@ class ExclusaoIntegracaoTest {
         UUID protocolo = UUID.randomUUID();
         inserirMedicao(titular);
         var provedor = mock(OpenWearables.class);
-        var tratador = new TratarExclusao(json, repositorio, eventos, provedor);
+        var tratador = new TratarExclusao(json, repositorio, eventos, provedor, vinculos, referencias);
 
         assertThatThrownBy(() -> enviar(tratador, protocolo, titular)).hasMessageContaining("reconciliação do vínculo");
         verifyNoInteractions(provedor);

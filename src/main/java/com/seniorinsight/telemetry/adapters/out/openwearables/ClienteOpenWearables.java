@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -42,14 +44,39 @@ class ClienteOpenWearables implements OpenWearables {
     }
 
     @Override
-    public UUID provisionarUsuario() {
-        // Sem dados pessoais no Open Wearables: o vínculo idoso ↔ usuário fica só no telemetry-service.
-        UsuarioCriado usuario = chamar("provisionar usuário", () -> restClient.post()
-                .uri("/api/v1/users")
-                .body(Map.of())
-                .retrieve()
-                .body(UsuarioCriado.class));
+    public Optional<UUID> buscarUsuarioPorReferencia(String referencia) {
+        PaginaUsuarios pagina = chamar("localizar usuário", () -> restClient.get()
+                .uri(uri -> uri.path("/api/v1/users").queryParam("external_user_id", referencia).build())
+                .retrieve().body(PaginaUsuarios.class));
+        if (pagina == null || pagina.items() == null || pagina.items().size() > 1
+                || (pagina.total() != null && pagina.total() > 1)) {
+            throw falhaVinculo();
+        }
+        return pagina.items().stream().map(usuario -> validarReferencia(usuario, referencia)).findFirst();
+    }
+
+    @Override
+    public UUID provisionarUsuario(String referencia) {
+        try {
+            UsuarioCriado usuario = chamar("provisionar usuário", () -> restClient.post()
+                    .uri("/api/v1/users")
+                    .body(Map.of("external_user_id", referencia))
+                    .retrieve().body(UsuarioCriado.class));
+            return validarReferencia(usuario, referencia);
+        } catch (HttpClientErrorException.Conflict conflito) {
+            return buscarUsuarioPorReferencia(referencia).orElseThrow(ClienteOpenWearables::falhaVinculo);
+        }
+    }
+
+    private static UUID validarReferencia(UsuarioCriado usuario, String referencia) {
+        if (usuario == null || usuario.id() == null || !referencia.equals(usuario.referencia())) {
+            throw falhaVinculo();
+        }
         return usuario.id();
+    }
+
+    private static OpenWearablesIndisponivelException falhaVinculo() {
+        return new OpenWearablesIndisponivelException("Vínculo com usuário do Open Wearables não confirmado", null);
     }
 
     @Override
@@ -90,31 +117,77 @@ class ClienteOpenWearables implements OpenWearables {
     }
 
     @Override
-    public List<Leitura> buscarLeituras(UUID usuarioOpenWearables, Instant inicio, Instant fim) {
+    public List<Leitura> buscarLeituras(UUID usuarioOpenWearables, Instant inicio, Instant fim, Set<String> tipos) {
         List<Leitura> leituras = new ArrayList<>();
+        var series = tipos.stream().filter(tipo -> !"sleep".equals(tipo)).sorted().toList();
+        if (!series.isEmpty()) {
+            buscarSeries(usuarioOpenWearables, inicio, fim, Set.copyOf(series), String.join(",", series), leituras);
+        }
+        if (tipos.contains("sleep")) {
+            buscarSono(usuarioOpenWearables, inicio, fim, leituras);
+        }
+        return leituras;
+    }
+
+    private void buscarSeries(UUID usuario, Instant inicio, Instant fim, Set<String> tipos, String filtro,
+                              List<Leitura> leituras) {
         String cursor = null;
         do {
             String cursorAtual = cursor;
             PaginaAmostras pagina = chamar("buscar leituras", () -> restClient.get()
-                    .uri(uri -> urlSerieTemporal(uri, usuarioOpenWearables, inicio, fim, cursorAtual))
+                    .uri(uri -> urlSerieTemporal(uri, usuario, inicio, fim, filtro, cursorAtual))
                     .retrieve()
                     .body(PaginaAmostras.class));
             if (pagina == null || pagina.data() == null) {
-                break;
+                throw new OpenWearablesIndisponivelException("Resposta inválida para séries do Open Wearables", null);
             }
-            pagina.data().stream().map(ClienteOpenWearables::paraLeitura).forEach(leituras::add);
-            cursor = pagina.pagination() != null && pagina.pagination().hasMore()
-                    ? pagina.pagination().nextCursor()
-                    : null;
+            pagina.data().stream().filter(amostra -> tipos.contains(amostra.type()))
+                    .map(ClienteOpenWearables::paraLeitura).forEach(leituras::add);
+            cursor = proximaPagina(pagina.pagination(), cursorAtual);
         } while (cursor != null);
-        return leituras;
+    }
+
+    private void buscarSono(UUID usuario, Instant inicio, Instant fim, List<Leitura> leituras) {
+        String cursor = null;
+        do {
+            String cursorAtual = cursor;
+            PaginaSono pagina = chamar("buscar sessões de sono", () -> restClient.get().uri(uri -> {
+                uri.path("/api/v1/users/{usuario}/events/sleep")
+                        .queryParam("start_date", inicio).queryParam("end_date", fim)
+                        .queryParam("source_selection", "per_session").queryParam("limit", TAMANHO_PAGINA);
+                if (cursorAtual != null) {
+                    uri.queryParam("cursor", cursorAtual);
+                }
+                return uri.build(usuario);
+            }).retrieve().body(PaginaSono.class));
+            if (pagina == null || pagina.data() == null) {
+                throw new OpenWearablesIndisponivelException("Resposta inválida para sono do Open Wearables", null);
+            }
+            pagina.data().stream().filter(sessao -> sessao.finalizada() && sessao.inicio() != null
+                            && !sessao.inicio().isBefore(inicio) && sessao.fim() != null && sessao.segundos() != null)
+                    .map(sessao -> new Leitura("sleep", sessao.fim(), sessao.segundos(), "s", origem(sessao.source())))
+                    .forEach(leituras::add);
+            cursor = proximaPagina(pagina.pagination(), cursorAtual);
+        } while (cursor != null);
+    }
+
+    private static String proximaPagina(Paginacao paginacao, String anterior) {
+        if (paginacao == null || !paginacao.hasMore()) {
+            return null;
+        }
+        String cursor = paginacao.nextCursor();
+        if (cursor == null || cursor.isBlank() || cursor.equals(anterior)) {
+            throw new OpenWearablesIndisponivelException("Paginação inválida no Open Wearables", null);
+        }
+        return cursor;
     }
 
     private static URI urlSerieTemporal(UriBuilder uri, UUID usuario, Instant inicio, Instant fim,
-                                    String cursor) {
+                                    String tipos, String cursor) {
         uri.path("/api/v1/users/{usuario}/timeseries")
                 .queryParam("start_time", inicio)
                 .queryParam("end_time", fim)
+                .queryParam("types", tipos)
                 .queryParam("limit", TAMANHO_PAGINA);
         if (cursor != null) {
             uri.queryParam("cursor", cursor);
@@ -134,16 +207,28 @@ class ClienteOpenWearables implements OpenWearables {
     }
 
     private static Leitura paraLeitura(Amostra amostra) {
-        String origem = amostra.source() != null && amostra.source().provider() != null
-                ? amostra.source().provider()
-                : ORIGEM_PADRAO;
-        return new Leitura(amostra.type(), amostra.timestamp(), amostra.value(), amostra.unit(), origem);
+        return new Leitura(amostra.type(), amostra.timestamp(), amostra.value(), amostra.unit(), origem(amostra.source()));
     }
 
-    record UsuarioCriado(UUID id) {
+    private static String origem(Fonte fonte) {
+        return fonte != null && fonte.provider() != null ? fonte.provider() : ORIGEM_PADRAO;
+    }
+
+    record UsuarioCriado(UUID id, @JsonProperty("external_user_id") String referencia) {
+    }
+
+    record PaginaUsuarios(List<UsuarioCriado> items, Integer total) {
     }
 
     record PaginaAmostras(List<Amostra> data, Paginacao pagination) {
+    }
+
+    record PaginaSono(List<SessaoSono> data, Paginacao pagination) {
+    }
+
+    record SessaoSono(@JsonProperty("start_time") Instant inicio, @JsonProperty("end_time") Instant fim,
+                     @JsonProperty("sleep_duration_seconds") Integer segundos,
+                     @JsonProperty("is_final") boolean finalizada, Fonte source) {
     }
 
     record Paginacao(@JsonProperty("next_cursor") String nextCursor,
