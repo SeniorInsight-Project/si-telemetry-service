@@ -1,35 +1,111 @@
+# Sem segredos aqui: credenciais e endereços vêm de variáveis de ambiente (ver .env.example).
 spring:
-  application.name: si-telemetry-service
+  application:
+    name: telemetry-service
+
+  data:
+    redis:
+      connect-timeout: 250ms
+      timeout: 250ms
+
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:seniorinsight_telemetry}
-    username: ${DB_USERNAME:seniorinsight}
-    password: ${DB_PASSWORD:seniorinsight}
-  jpa:
-    hibernate.ddl-auto: validate
-    open-in-view: false
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:seniorinsight}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      # search_path da conexão: JPA, SQL nativo e Flyway enxergam só o schema do serviço.
+      schema: telemetry
+
   flyway:
-    enabled: true
-    locations: classpath:db/migration
+    schemas: telemetry
+    default-schema: telemetry
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    publisher-confirm-type: correlated
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+
 server:
-  port: ${SERVER_PORT:8081}
-spring.data.redis:
-  host: ${REDIS_HOST:localhost}
-  port: ${REDIS_PORT:6379}
-seniorinsight:
-  care-service:
-    base-url: ${CARE_SERVICE_BASE_URL:http://localhost:8080}
-  integrations.openwearables:
+  port: ${SERVER_PORT:8080}
+  # O serviço fica atrás do API Gateway: respeita X-Forwarded-* (host, proto, prefix) nas URLs geradas.
+  forward-headers-strategy: framework
+
+management:
+  health:
+    redis:
+      # O cache é opcional; o PostgreSQL continua servindo a consulta.
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+telemetry:
+  hoje:
+    fuso: ${TELEMETRY_HOJE_FUSO:America/Sao_Paulo}
+    meta-passos: ${TELEMETRY_META_PASSOS:4000}
+    cache-redis-ativo: ${TELEMETRY_REDIS_ENABLED:false}
+  outbox:
+    relay:
+      intervalo: PT1S
+      tamanho-lote: 100
+      timeout-confirmacao: PT5S
+  mensageria:
+    prefetch: 10
+  particoes:
+    # Garante a partição mensal de medicao do mês atual e dos próximos meses.
+    meses-a-frente: 2
+    cron: "0 0 3 * * *"
+  open-wearables:
     enabled: ${OPENWEARABLES_ENABLED:false}
-    base-url: ${OPENWEARABLES_BASE_URL:https://api.openwearables.io}
+    base-url: ${OPENWEARABLES_BASE_URL:http://localhost:8000}
     api-key: ${OPENWEARABLES_API_KEY:}
-  sync-monitoring:
-    interval-ms: ${SYNC_MONITORING_INTERVAL_MS:900000}
-    threshold: ${SYNC_MONITORING_THRESHOLD:PT3H}
-    day-start: ${SYNC_MONITORING_DAY_START:07:00}
-    day-end: ${SYNC_MONITORING_DAY_END:22:00}
-    time-zone: ${SYNC_MONITORING_TIME_ZONE:America/Sao_Paulo}
-  telemetry-today:
-    cache-enabled: ${TELEMETRY_TODAY_CACHE_ENABLED:true}
-    cache-ttl: ${TELEMETRY_TODAY_CACHE_TTL:15m}
-    stale-after: ${TELEMETRY_TODAY_STALE_AFTER:48h}
-    time-zone: ${TELEMETRY_TODAY_TIME_ZONE:America/Sao_Paulo}
+    timeout-conexao: PT2S
+    timeout-leitura: PT10S
+  care-service:
+    base-url: ${CARE_SERVICE_URL:http://localhost:8082}
+    timeout-conexao: PT2S
+    timeout-leitura: PT3S
+
+resilience4j:
+  retry:
+    instances:
+      openWearables:
+        max-attempts: 3
+        wait-duration: PT0.5S
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        # Só falhas de rede/timeout e 5xx; 4xx não melhora repetindo.
+        retry-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+  circuitbreaker:
+    instances:
+      openWearables:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: PT30S
+        permitted-number-of-calls-in-half-open-state: 2
+        record-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException

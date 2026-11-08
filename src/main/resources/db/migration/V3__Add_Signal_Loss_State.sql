@@ -1,2 +1,0 @@
-ALTER TABLE device_sync_status
-    ADD COLUMN signal_lost BOOLEAN NOT NULL DEFAULT FALSE;
