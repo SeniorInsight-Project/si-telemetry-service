@@ -51,22 +51,28 @@ class RelayOutboxIntegracaoTest {
 
     @Test
     void publicaPerdaERetornoComoCloudEventsNaExchange() throws Exception {
-        Queue fila = amqpAdmin.declareQueue();
-        amqpAdmin.declareBinding(BindingBuilder.bind(fila)
-                .to(new TopicExchange(OutboxConfig.EXCHANGE_EVENTOS))
-                .with("telemetry.signal.*"));
+        Queue filaPerda = filaPara("telemetry.signal.lost");
+        Queue filaRetorno = filaPara("telemetry.signal.recovered");
         UUID idosoId = UUID.randomUUID();
         Instant ultima = Instant.parse("2026-11-01T12:00:00Z");
         Instant perda = ultima.plus(Duration.ofHours(3));
         Instant retorno = perda.plus(Duration.ofMinutes(15));
 
         transacao.executeWithoutResult(status -> publicador.publicar(new SinalPerdido(idosoId, ultima, perda)));
-        conferirCloudEvent(fila, idosoId, "telemetry.signal.lost", objectMapper.createObjectNode()
+        conferirCloudEvent(filaPerda, idosoId, "telemetry.signal.lost", objectMapper.createObjectNode()
                 .put("idosoId", idosoId.toString()).put("ultimaSincronizacao", ultima.toString())
                 .put("detectadoEm", perda.toString()));
         transacao.executeWithoutResult(status -> publicador.publicar(new SinalRecuperado(idosoId, retorno)));
-        conferirCloudEvent(fila, idosoId, "telemetry.signal.recovered", objectMapper.createObjectNode()
+        conferirCloudEvent(filaRetorno, idosoId, "telemetry.signal.recovered", objectMapper.createObjectNode()
                 .put("idosoId", idosoId.toString()).put("sincronizadoEm", retorno.toString()));
+    }
+
+    private Queue filaPara(String tipo) {
+        Queue fila = amqpAdmin.declareQueue();
+        amqpAdmin.declareBinding(BindingBuilder.bind(fila)
+                .to(new TopicExchange(OutboxConfig.EXCHANGE_EVENTOS))
+                .with(tipo));
+        return fila;
     }
 
     private void conferirCloudEvent(Queue fila, UUID idosoId, String tipo, JsonNode dados) throws Exception {
