@@ -11,6 +11,6 @@ public record TelemetriaIngerida(UUID idosoId, List<Agregado> agregados) impleme
     @Override public String tipoEvento() { return "telemetry.ingested"; }
 
     public record Agregado(LocalDate dia, String tipo, String unidade, int quantidade, double minimo,
-                          double maximo, double media, double soma, Double linhaBase14Dias) {
+                          double maximo, double media, double soma, Double linhaBase14Dias, int horasComDados) {
     }
 }

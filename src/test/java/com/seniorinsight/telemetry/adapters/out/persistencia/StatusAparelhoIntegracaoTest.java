@@ -98,7 +98,8 @@ class StatusAparelhoIntegracaoTest {
                 """, Double.class, idosoId)).isEqualTo(72);
         entidade.flush();
         assertThat(jdbc.queryForObject("""
-                SELECT payload::text FROM outbox_evento WHERE agregado_id = ? AND tipo_evento = 'telemetry.ingested'
-                """, String.class, idosoId)).contains("heart_rate");
+                SELECT payload #>> '{agregados,0,horasComDados}' FROM outbox_evento
+                 WHERE agregado_id = ? AND tipo_evento = 'telemetry.ingested'
+                """, String.class, idosoId)).isEqualTo("1");
     }
 }
