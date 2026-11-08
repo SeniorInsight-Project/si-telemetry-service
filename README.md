@@ -1,5 +1,17 @@
 # si-telemetry-service
 
+## Exclusão do titular
+
+A exclusão remove o usuário vinculado no Open Wearables, apaga os registros
+identificáveis locais e mantém apenas contagens globais por categoria de sinal.
+O vínculo com o provedor fica em `usuario_open_wearables`. A ingestão (#5)
+deve preencher essa tabela. Medições legadas sem vínculo precisam ser
+reconciliadas antes de confirmar a exclusão.
+
+Os eventos `lgpd.erasure.requested` e `lgpd.erasure.completed` seguem o
+contrato do si-contracts. Uma impressão do identificador impede que mensagens
+antigas recriem os dados excluídos.
+
 Serviço de telemetria: provisiona o usuário no Open Wearables, lê a API dele a cada 15 min, descarta valores fora de faixa, agrega por dia, calcula a linha de base e detecta perda de sinal, bateria baixa e inatividade. Publica `telemetry.ingested`, `telemetry.signal.lost`, `telemetry.battery.low` e `telemetry.inactivity` na exchange `si.events`.
 
 Parte do SeniorInsight — ver o Documento de Arquitetura de Software (seção 6) para as convenções.

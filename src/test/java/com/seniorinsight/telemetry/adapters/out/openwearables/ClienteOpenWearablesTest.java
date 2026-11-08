@@ -70,6 +70,28 @@ class ClienteOpenWearablesTest {
     }
 
     @Test
+    void excluiUsuarioEReconheceReentregaQuandoEleJaEstaAusente() {
+        servidor.responder(200, "{\"id\":\"%s\"}".formatted(USUARIO));
+        servidor.responder(404, "{\"detail\":\"User with ID: %s not found.\"}".formatted(USUARIO));
+
+        cliente.excluirUsuario(USUARIO);
+        cliente.excluirUsuario(USUARIO);
+
+        assertThat(servidor.requisicoes()).allSatisfy(requisicao -> {
+            assertThat(requisicao.metodo()).isEqualTo("DELETE");
+            assertThat(requisicao.caminho()).isEqualTo("/api/v1/users/" + USUARIO);
+        });
+    }
+
+    @Test
+    void erroGenerico404NaoConfirmaExclusao() {
+        servidor.responder(404, "{\"detail\":\"Not Found\"}");
+
+        assertThatThrownBy(() -> cliente.excluirUsuario(USUARIO))
+                .isInstanceOf(OpenWearablesIndisponivelException.class);
+    }
+
+    @Test
     void buscaLeiturasDeTodasAsPaginas() {
         servidor.responder(200, """
                 {"data": [{"timestamp": "2026-10-31T00:05:00Z", "type": "heart_rate", "value": 72, "unit": "bpm",

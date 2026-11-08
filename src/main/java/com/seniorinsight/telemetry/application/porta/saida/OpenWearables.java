@@ -17,6 +17,8 @@ public interface OpenWearables {
     /** Cria o usuário do idoso no Open Wearables e devolve o id gerado lá, que deve ser guardado. */
     UUID provisionarUsuario();
 
+    void excluirUsuario(UUID usuarioOpenWearables);
+
     /** Amostras do usuário com horário entre {@code inicio} e {@code fim}, juntando todas as páginas. */
     List<Leitura> buscarLeituras(UUID usuarioOpenWearables, Instant inicio, Instant fim);
 }
