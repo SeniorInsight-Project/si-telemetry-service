@@ -50,18 +50,29 @@ class ConsumidorEventosIntegracaoTest {
     }
 
     @Test
-    void eventoPublicadoNaSiEventsComRoutingKeyAssinadaChegaNaFila() {
+    void consentimentoPublicadoNaSiEventsChegaNaFilaEAtualizaAProjecao() {
         UUID eventoId = UUID.randomUUID();
-        Message mensagem = MessageBuilder.withBody("{}".getBytes(StandardCharsets.UTF_8))
+        UUID idosoId = UUID.randomUUID();
+        String evento = """
+                {
+                  "specversion":"1.0", "source":"/care-service", "type":"consent.changed",
+                  "time":"2026-11-01T13:15:00Z",
+                  "data":{"idosoId":"%s","tipo":"OXIGENACAO","destinatario":"REDE","autorizado":false}
+                }
+                """.formatted(idosoId);
+        Message mensagem = MessageBuilder.withBody(evento.getBytes(StandardCharsets.UTF_8))
                 .setContentType(MessageProperties.CONTENT_TYPE_JSON)
                 .setMessageId(eventoId.toString())
                 .build();
 
         rabbitTemplate.send(MensageriaConfig.EXCHANGE_EVENTOS, "consent.changed", mensagem);
 
-        await().atMost(PRAZO).untilAsserted(() -> assertThat(jdbc.queryForList(
-                "SELECT tipo_evento FROM evento_recebido WHERE id = ?", String.class, eventoId))
-                .containsExactly("consent.changed"));
+        await().atMost(PRAZO).untilAsserted(() -> {
+            assertThat(jdbc.queryForList("SELECT tipo_evento FROM evento_recebido WHERE id = ?",
+                    String.class, eventoId)).containsExactly("consent.changed");
+            assertThat(jdbc.queryForList("SELECT autorizado FROM consentimento_rede WHERE idoso_id = ? AND tipo = ?",
+                    Boolean.class, idosoId, "OXIGENACAO")).containsExactly(false);
+        });
     }
 
     @Test
