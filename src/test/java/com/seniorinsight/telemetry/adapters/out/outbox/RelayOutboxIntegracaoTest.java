@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seniorinsight.telemetry.TesteIntegracao;
 import com.seniorinsight.telemetry.application.porta.saida.PublicadorEventos;
 import com.seniorinsight.telemetry.domain.evento.EventoDominio;
+import com.seniorinsight.telemetry.domain.evento.SinalPerdido;
+import com.seniorinsight.telemetry.domain.evento.SinalRecuperado;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.BindingBuilder;
@@ -44,6 +48,42 @@ class RelayOutboxIntegracaoTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @Test
+    void publicaPerdaERetornoComoCloudEventsNaExchange() throws Exception {
+        Queue fila = amqpAdmin.declareQueue();
+        amqpAdmin.declareBinding(BindingBuilder.bind(fila)
+                .to(new TopicExchange(OutboxConfig.EXCHANGE_EVENTOS))
+                .with("telemetry.signal.*"));
+        UUID idosoId = UUID.randomUUID();
+        Instant ultima = Instant.parse("2026-11-01T12:00:00Z");
+        Instant perda = ultima.plus(Duration.ofHours(3));
+        Instant retorno = perda.plus(Duration.ofMinutes(15));
+
+        transacao.executeWithoutResult(status -> publicador.publicar(new SinalPerdido(idosoId, ultima, perda)));
+        conferirCloudEvent(fila, idosoId, "telemetry.signal.lost", objectMapper.createObjectNode()
+                .put("idosoId", idosoId.toString()).put("ultimaSincronizacao", ultima.toString())
+                .put("detectadoEm", perda.toString()));
+        transacao.executeWithoutResult(status -> publicador.publicar(new SinalRecuperado(idosoId, retorno)));
+        conferirCloudEvent(fila, idosoId, "telemetry.signal.recovered", objectMapper.createObjectNode()
+                .put("idosoId", idosoId.toString()).put("sincronizadoEm", retorno.toString()));
+    }
+
+    private void conferirCloudEvent(Queue fila, UUID idosoId, String tipo, JsonNode dados) throws Exception {
+        Message mensagem = rabbitTemplate.receive(fila.getName(), Duration.ofSeconds(15).toMillis());
+        assertThat(mensagem).isNotNull();
+        var props = mensagem.getMessageProperties();
+        assertThat(props.getReceivedRoutingKey()).isEqualTo(tipo);
+        assertThat(props.getContentType()).isEqualTo("application/cloudevents+json");
+        var evento = objectMapper.readTree(mensagem.getBody());
+        assertThat(evento.path("specversion").asText()).isEqualTo("1.0");
+        assertThat(evento.path("id").asText()).isEqualTo(props.getMessageId());
+        assertThat(evento.path("source").asText()).isEqualTo("/telemetry-service");
+        assertThat(evento.path("type").asText()).isEqualTo(tipo);
+        assertThat(evento.path("subject").asText()).isEqualTo(idosoId.toString());
+        assertThat(evento.path("dataschema").asText()).endsWith("/events/" + tipo + ".v1.json");
+        assertThat(evento.path("data")).isEqualTo(dados);
+    }
 
     @Test
     void publicaNaExchangeSiEventsComRoutingKeyIgualAoTipoDoEventoEMarcaPublicado() throws Exception {
