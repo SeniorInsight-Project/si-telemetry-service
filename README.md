@@ -82,6 +82,9 @@ O `application.yml` não tem segredos; tudo vem do ambiente. O modelo está no [
 | `OPENWEARABLES_BASE_URL` | `http://localhost:8000` | Endereço da API do Open Wearables (self-hosted) |
 | `OPENWEARABLES_API_KEY` | — | Chave da API, enviada no header `X-Open-Wearables-API-Key` |
 | `CARE_SERVICE_URL` | `http://localhost:8082` | Endereço do care-service, para a verificação de vínculo (RF-007) |
+| `TELEMETRY_REDIS_ENABLED` | `false` | Liga o cache de 15 min da rota de hoje no Redis; desligado, a rota lê do PostgreSQL |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Endereço do Redis, usado só com o cache ligado |
+| `TELEMETRY_META_PASSOS` | `4000` | Meta diária de passos devolvida em `metaPassos` |
 | `SERVER_PORT` | `8080` | Porta HTTP |
 
 `KEYCLOAK_ISSUER_URI` precisa ser **exatamente** o valor do claim `iss` dos tokens. No Compose o issuer é `http://localhost:8180/...`, que não é acessível de dentro da rede dos containers; por isso as chaves são baixadas de `http://keycloak:8080/.../certs` via `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI`, e o `iss` continua sendo validado contra o issuer.
@@ -162,6 +165,14 @@ Substitui a ingestão que ficava no care-service (`TelemetriaWearable`, `Wearabl
 - A leitura mais recente atualiza `status_aparelho` (última sincronização e bateria) e limpa `sinal_perdido_desde`.
 - `fall_detection.fall_detected = true` publica `telemetry.fall.detected` pela outbox.
 - A rota antiga do care-service continua no ar; ela só é removida depois da troca do app.
+
+## Estado de hoje
+
+`GET /v1/idosos/{idosoId}/hoje` (pelo gateway, `/api/v1/telemetry/idosos/{idosoId}/hoje`) devolve o `EstadoAtual` do contrato `telemetry-v1`: `passosHoje`, `metaPassos`, `frequenciaCardiaca`, `frequenciaCardiacaRepouso` e `coletadoEm`. Quem lê: o próprio idoso e a rede de apoio vinculada no care-service; os demais recebem 403.
+
+- Só entram os tipos que o idoso autoriza para a rede. O consentimento é a projeção de `consent.changed` (destinatário `REDE`) na tabela `consentimento_rede`; um tipo revogado vem `null`, nunca com o valor antigo.
+- Sem leitura nas últimas 48 h, os valores vêm `null` (sem dados recentes, RN-003).
+- Com `TELEMETRY_REDIS_ENABLED=true`, as medições do dia ficam 15 min no Redis (RNF-002). A chave inclui o consentimento, então uma revogação vale na hora. Com o Redis fora do ar, a rota segue pelo PostgreSQL.
 
 ## Testes
 

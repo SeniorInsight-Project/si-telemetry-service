@@ -52,7 +52,12 @@ class ConsumidorEventosIntegracaoTest {
     @Test
     void eventoPublicadoNaSiEventsComRoutingKeyAssinadaChegaNaFila() {
         UUID eventoId = UUID.randomUUID();
-        Message mensagem = MessageBuilder.withBody("{}".getBytes(StandardCharsets.UTF_8))
+        // Destinatário MEDICO: o telemetry só registra o evento, sem projetar nada.
+        String corpo = """
+                {"specversion":"1.0","source":"/care-service","type":"consent.changed","time":"2026-11-08T15:30:00Z",
+                 "data":{"idosoId":"%s","tipo":"PASSOS","destinatario":"MEDICO","autorizado":true}}"""
+                .formatted(UUID.randomUUID());
+        Message mensagem = MessageBuilder.withBody(corpo.getBytes(StandardCharsets.UTF_8))
                 .setContentType(MessageProperties.CONTENT_TYPE_JSON)
                 .setMessageId(eventoId.toString())
                 .build();
