@@ -174,6 +174,14 @@ Substitui a ingestão que ficava no care-service (`TelemetriaWearable`, `Wearabl
 - Sem leitura nas últimas 48 h, os valores vêm `null` (sem dados recentes, RN-003).
 - Com `TELEMETRY_REDIS_ENABLED=true`, as medições do dia ficam 15 min no Redis (RNF-002). A chave inclui o consentimento, então uma revogação vale na hora. Com o Redis fora do ar, a rota segue pelo PostgreSQL.
 
+## Status do celular
+
+`GET /v1/idosos/{idosoId}/status` (pelo gateway, `/api/v1/telemetry/idosos/{idosoId}/status`) devolve o `StatusAparelho` do contrato: `ultimaSincronizacao`, `nivelBateria`, `versaoApp`, `modeloCelular`, `sistemaOperacional` e `tiposAtivos`. Quem lê: o próprio idoso e a rede de apoio vinculada; os demais recebem 403.
+
+- Sincronização e bateria vêm da ingestão de telemetria. Versão do app, modelo e sistema ficam `null` até o aparelho informá-los.
+- `tiposAtivos` são os tipos que o idoso autoriza para a rede (projeção de `consent.changed`, destinatário `REDE`).
+- Idoso que ainda não sincronizou recebe 200 com os campos do aparelho `null`.
+
 ## Testes
 
 ```bash
