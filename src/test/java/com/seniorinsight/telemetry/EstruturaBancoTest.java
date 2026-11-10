@@ -28,11 +28,11 @@ class EstruturaBancoTest {
     JdbcTemplate jdbc;
 
     @Test
-    void flywayAplicaAV1NoSchemaTelemetry() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
+    void flywayAplicaAsMigracoesNoSchemaTelemetry() {
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
         assertThat(jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'telemetry'", String.class))
-                .contains("medicao", "agregado_diario", "status_aparelho", "outbox_evento", "evento_recebido",
+                .contains("medicao", "agregado_diario", "status_aparelho", "outbox_evento", "evento_recebido", "consentimento_rede",
                         "flyway_schema_history");
     }
 
