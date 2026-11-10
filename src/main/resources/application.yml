@@ -50,6 +50,9 @@ management:
         enabled: true
 
 telemetry:
+  hoje:
+    # Fuso que define o "dia" do resumo diário (RF-025) e da consulta de hoje.
+    fuso: ${TELEMETRY_HOJE_FUSO:America/Sao_Paulo}
   outbox:
     relay:
       intervalo: PT1S

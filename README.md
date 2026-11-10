@@ -55,7 +55,10 @@ O usuário do banco precisa poder criar o schema `telemetry` (ou o schema precis
 |---|---|
 | `GET /actuator/health` (e `/liveness`, `/readiness`) | público |
 | `/swagger-ui.html` e `/v3/api-docs` | público |
-| todo o resto (as rotas `/api/v1/telemetry/...` chegam nas próximas issues) | token do Keycloak |
+| `POST /v1/idosos/{idosoId}/telemetria` e `.../telemetria/lote` | token do próprio idoso |
+| todo o resto (as demais rotas `/api/v1/telemetry/...` chegam nas próximas issues) | token do Keycloak |
+
+O gateway faz `StripPrefix=3` + `PrefixPath=/v1`: `/api/v1/telemetry/idosos/{id}/telemetria` chega aqui como `/v1/idosos/{id}/telemetria`. O controller mapeia sempre `/v1/idosos/...`.
 
 ## Variáveis de ambiente
 
@@ -138,6 +141,27 @@ O cliente fica em `adapters.out.openwearables` e implementa a porta `OpenWearabl
 - circuit breaker (instância `openWearables`): abre com 50% de falha em 10 chamadas (mínimo 5) e fica aberto 30 s.
 
 Falha depois disso (ou circuito aberto) chega como `OpenWearablesIndisponivelException`. Os parâmetros ficam em `resilience4j.*` no `application.yml`.
+
+## Ingestão de telemetria (si-telemetry-service#1)
+
+Substitui a ingestão que ficava no care-service (`TelemetriaWearable`, `WearableIntegrationService`). O app do idoso envia o mesmo corpo em snake_case (`heart_rate`, `steps`, `fall_detection`, `battery_level`, `spo2_percentage`) para `POST /v1/idosos/{idosoId}/telemetria` (uma leitura) ou `.../telemetria/lote` (até 500). Só o próprio idoso pode enviar (RF-007) e a resposta é `202` com `{recebidas, gravadas, descartadas}`.
+
+| Origem no payload | Tipo gravado em `medicao` | Unidade | Faixa aceita |
+|---|---|---|---|
+| `heart_rate.bpm` | `heart_rate` | bpm | 30–260 |
+| `heart_rate.resting_bpm` | `resting_heart_rate` | bpm | 30–200 |
+| `heart_rate.hrv_ms` | `hrv` | ms | 0–500 |
+| `steps.count` | `steps` | passos | 0–200000 |
+| `steps.distance_meters` | `distance` | m | 0–500000 |
+| `steps.calories_kcal` | `active_calories` | kcal | 0–20000 |
+| `spo2_percentage` | `oxygen_saturation` | % | 50–100 |
+
+- Valor fora da faixa ou horário mais de 5 minutos no futuro: a amostra é descartada e contada em `descartadas`; o resto do envio é gravado.
+- Deduplicação por idoso, tipo, horário e origem (RF-019; origem = `provider`, ou `app` se ausente). O `agregado_diario` só soma amostras novas, então reenviar não infla os passos. `steps.count` é tratado como passos da janela da leitura e somado no dia.
+- O dia do resumo usa o fuso `TELEMETRY_HOJE_FUSO` (padrão `America/Sao_Paulo`).
+- A leitura mais recente atualiza `status_aparelho` (última sincronização e bateria) e limpa `sinal_perdido_desde`.
+- `fall_detection.fall_detected = true` publica `telemetry.fall.detected` pela outbox.
+- A rota antiga do care-service continua no ar; ela só é removida depois da troca do app.
 
 ## Testes
 
