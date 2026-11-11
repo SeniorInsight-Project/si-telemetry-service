@@ -55,7 +55,10 @@ O usuário do banco precisa poder criar o schema `telemetry` (ou o schema precis
 |---|---|
 | `GET /actuator/health` (e `/liveness`, `/readiness`) | público |
 | `/swagger-ui.html` e `/v3/api-docs` | público |
-| todo o resto (as rotas `/api/v1/telemetry/...` chegam nas próximas issues) | token do Keycloak |
+| `POST /v1/idosos/{idosoId}/telemetria` e `.../telemetria/lote` | token do próprio idoso |
+| todo o resto (as demais rotas `/api/v1/telemetry/...` chegam nas próximas issues) | token do Keycloak |
+
+O gateway faz `StripPrefix=3` + `PrefixPath=/v1`: `/api/v1/telemetry/idosos/{id}/telemetria` chega aqui como `/v1/idosos/{id}/telemetria`. O controller mapeia sempre `/v1/idosos/...`.
 
 ## Variáveis de ambiente
 
@@ -79,6 +82,9 @@ O `application.yml` não tem segredos; tudo vem do ambiente. O modelo está no [
 | `OPENWEARABLES_BASE_URL` | `http://localhost:8000` | Endereço da API do Open Wearables (self-hosted) |
 | `OPENWEARABLES_API_KEY` | — | Chave da API, enviada no header `X-Open-Wearables-API-Key` |
 | `CARE_SERVICE_URL` | `http://localhost:8082` | Endereço do care-service, para a verificação de vínculo (RF-007) |
+| `TELEMETRY_REDIS_ENABLED` | `false` | Liga o cache de 15 min da rota de hoje no Redis; desligado, a rota lê do PostgreSQL |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Endereço do Redis, usado só com o cache ligado |
+| `TELEMETRY_META_PASSOS` | `4000` | Meta diária de passos devolvida em `metaPassos` |
 | `SERVER_PORT` | `8080` | Porta HTTP |
 
 `KEYCLOAK_ISSUER_URI` precisa ser **exatamente** o valor do claim `iss` dos tokens. No Compose o issuer é `http://localhost:8180/...`, que não é acessível de dentro da rede dos containers; por isso as chaves são baixadas de `http://keycloak:8080/.../certs` via `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI`, e o `iss` continua sendo validado contra o issuer.
@@ -138,6 +144,43 @@ O cliente fica em `adapters.out.openwearables` e implementa a porta `OpenWearabl
 - circuit breaker (instância `openWearables`): abre com 50% de falha em 10 chamadas (mínimo 5) e fica aberto 30 s.
 
 Falha depois disso (ou circuito aberto) chega como `OpenWearablesIndisponivelException`. Os parâmetros ficam em `resilience4j.*` no `application.yml`.
+
+## Ingestão de telemetria (si-telemetry-service#1)
+
+Substitui a ingestão que ficava no care-service (`TelemetriaWearable`, `WearableIntegrationService`). O app do idoso envia o mesmo corpo em snake_case (`heart_rate`, `steps`, `fall_detection`, `battery_level`, `spo2_percentage`) para `POST /v1/idosos/{idosoId}/telemetria` (uma leitura) ou `.../telemetria/lote` (até 500). Só o próprio idoso pode enviar (RF-007) e a resposta é `202` com `{recebidas, gravadas, descartadas}`.
+
+| Origem no payload | Tipo gravado em `medicao` | Unidade | Faixa aceita |
+|---|---|---|---|
+| `heart_rate.bpm` | `heart_rate` | bpm | 30–260 |
+| `heart_rate.resting_bpm` | `resting_heart_rate` | bpm | 30–200 |
+| `heart_rate.hrv_ms` | `hrv` | ms | 0–500 |
+| `steps.count` | `steps` | passos | 0–200000 |
+| `steps.distance_meters` | `distance` | m | 0–500000 |
+| `steps.calories_kcal` | `active_calories` | kcal | 0–20000 |
+| `spo2_percentage` | `oxygen_saturation` | % | 50–100 |
+
+- Valor fora da faixa ou horário mais de 5 minutos no futuro: a amostra é descartada e contada em `descartadas`; o resto do envio é gravado.
+- Deduplicação por idoso, tipo, horário e origem (RF-019; origem = `provider`, ou `app` se ausente). O `agregado_diario` só soma amostras novas, então reenviar não infla os passos. `steps.count` é tratado como passos da janela da leitura e somado no dia.
+- O dia do resumo usa o fuso `TELEMETRY_HOJE_FUSO` (padrão `America/Sao_Paulo`).
+- A leitura mais recente atualiza `status_aparelho` (última sincronização e bateria) e limpa `sinal_perdido_desde`.
+- `fall_detection.fall_detected = true` publica `telemetry.fall.detected` pela outbox.
+- A rota antiga do care-service continua no ar; ela só é removida depois da troca do app.
+
+## Estado de hoje
+
+`GET /v1/idosos/{idosoId}/hoje` (pelo gateway, `/api/v1/telemetry/idosos/{idosoId}/hoje`) devolve o `EstadoAtual` do contrato `telemetry-v1`: `passosHoje`, `metaPassos`, `frequenciaCardiaca`, `frequenciaCardiacaRepouso` e `coletadoEm`. Quem lê: o próprio idoso e a rede de apoio vinculada no care-service; os demais recebem 403.
+
+- Só entram os tipos que o idoso autoriza para a rede. O consentimento é a projeção de `consent.changed` (destinatário `REDE`) na tabela `consentimento_rede`; um tipo revogado vem `null`, nunca com o valor antigo.
+- Sem leitura nas últimas 48 h, os valores vêm `null` (sem dados recentes, RN-003).
+- Com `TELEMETRY_REDIS_ENABLED=true`, as medições do dia ficam 15 min no Redis (RNF-002). A chave inclui o consentimento, então uma revogação vale na hora. Com o Redis fora do ar, a rota segue pelo PostgreSQL.
+
+## Status do celular
+
+`GET /v1/idosos/{idosoId}/status` (pelo gateway, `/api/v1/telemetry/idosos/{idosoId}/status`) devolve o `StatusAparelho` do contrato: `ultimaSincronizacao`, `nivelBateria`, `versaoApp`, `modeloCelular`, `sistemaOperacional` e `tiposAtivos`. Quem lê: o próprio idoso e a rede de apoio vinculada; os demais recebem 403.
+
+- Sincronização e bateria vêm da ingestão de telemetria. Versão do app, modelo e sistema ficam `null` até o aparelho informá-los.
+- `tiposAtivos` são os tipos que o idoso autoriza para a rede (projeção de `consent.changed`, destinatário `REDE`).
+- Idoso que ainda não sincronizou recebe 200 com os campos do aparelho `null`.
 
 ## Testes
 
