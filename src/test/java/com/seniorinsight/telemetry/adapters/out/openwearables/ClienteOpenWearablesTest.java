@@ -47,7 +47,7 @@ class ClienteOpenWearablesTest {
 
     private final ClienteOpenWearables cliente = new ClienteOpenWearables(
             OpenWearablesConfig.restClient(RestClient.builder(), new PropriedadesOpenWearables(
-                    true, servidor.url(), "chave-teste", Duration.ofSeconds(1), Duration.ofMillis(300))),
+                    true, servidor.url(), "chave-teste", Duration.ofSeconds(1), Duration.ofMillis(750))),
             circuitBreaker, retry);
 
     @AfterEach
@@ -67,6 +67,28 @@ class ClienteOpenWearablesTest {
         assertThat(requisicao.metodo()).isEqualTo("POST");
         assertThat(requisicao.caminho()).isEqualTo("/api/v1/users");
         assertThat(requisicao.header("X-Open-Wearables-API-Key")).isEqualTo("chave-teste");
+    }
+
+    @Test
+    void excluiUsuarioEReconheceReentregaQuandoEleJaEstaAusente() {
+        servidor.responder(200, "{\"id\":\"%s\"}".formatted(USUARIO));
+        servidor.responder(404, "{\"detail\":\"User with ID: %s not found.\"}".formatted(USUARIO));
+
+        cliente.excluirUsuario(USUARIO);
+        cliente.excluirUsuario(USUARIO);
+
+        assertThat(servidor.requisicoes()).allSatisfy(requisicao -> {
+            assertThat(requisicao.metodo()).isEqualTo("DELETE");
+            assertThat(requisicao.caminho()).isEqualTo("/api/v1/users/" + USUARIO);
+        });
+    }
+
+    @Test
+    void erroGenerico404NaoConfirmaExclusao() {
+        servidor.responder(404, "{\"detail\":\"Not Found\"}");
+
+        assertThatThrownBy(() -> cliente.excluirUsuario(USUARIO))
+                .isInstanceOf(OpenWearablesIndisponivelException.class);
     }
 
     @Test

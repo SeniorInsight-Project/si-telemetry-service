@@ -16,8 +16,10 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriBuilder;
 
 /**
@@ -48,6 +50,43 @@ class ClienteOpenWearables implements OpenWearables {
                 .retrieve()
                 .body(UsuarioCriado.class));
         return usuario.id();
+    }
+
+    @Override
+    public void excluirUsuario(UUID usuarioOpenWearables) {
+        try {
+            var resposta = chamar("excluir usuário", () -> restClient.delete()
+                    .uri("/api/v1/users/{usuario}", usuarioOpenWearables)
+                    .retrieve()
+                    .toEntity(UsuarioCriado.class));
+            if (resposta.getStatusCode().value() != 204
+                    && (resposta.getStatusCode().value() != 200 || resposta.getBody() == null
+                        || !usuarioOpenWearables.equals(resposta.getBody().id()))) {
+                throw falhaExclusao();
+            }
+        } catch (HttpClientErrorException.NotFound e) {
+            if (!usuarioJaAusente(e, usuarioOpenWearables)) {
+                throw falhaExclusao();
+            }
+        } catch (RestClientException | OpenWearablesIndisponivelException e) {
+            throw falhaExclusao();
+        }
+    }
+
+    private static boolean usuarioJaAusente(HttpClientErrorException.NotFound erro, UUID usuario) {
+        try {
+            var resposta = erro.getResponseBodyAs(ErroExclusao.class);
+            return resposta != null && ("User with ID: " + usuario + " not found.").equals(resposta.detail());
+        } catch (RestClientException | IllegalStateException e) {
+            return false;
+        }
+    }
+
+    private static OpenWearablesIndisponivelException falhaExclusao() {
+        return new OpenWearablesIndisponivelException("Exclusão não confirmada pelo Open Wearables", null);
+    }
+
+    record ErroExclusao(String detail) {
     }
 
     @Override
