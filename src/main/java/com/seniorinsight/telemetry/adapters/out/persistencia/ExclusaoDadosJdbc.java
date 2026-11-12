@@ -23,6 +23,19 @@ class ExclusaoDadosJdbc implements ExclusaoDadosRepositorio {
     }
 
     @Override
+    public boolean confirmado(UUID protocolo) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM exclusao_confirmada WHERE protocolo = ?)", Boolean.class, protocolo));
+    }
+
+    @Override
+    public void bloquearParaExclusao(UUID idosoId) {
+        bloquear(idosoId.toString());
+        jdbc.update("INSERT INTO titular_excluido (chave) VALUES (sha256(convert_to(?, 'UTF8'))) ON CONFLICT DO NOTHING",
+                idosoId.toString());
+    }
+
+    @Override
     public Optional<UUID> bloquearEBuscarUsuarioOpenWearables(UUID idosoId) {
         bloquear(idosoId.toString());
         var vinculo = jdbc.queryForList("SELECT usuario_id FROM usuario_open_wearables WHERE idoso_id = ?",
@@ -38,8 +51,7 @@ class ExclusaoDadosJdbc implements ExclusaoDadosRepositorio {
 
     @Override
     public void excluirEAnonimizar(UUID idosoId) {
-        jdbc.update("INSERT INTO titular_excluido (chave) VALUES (sha256(convert_to(?, 'UTF8'))) ON CONFLICT DO NOTHING",
-                idosoId.toString());
+        bloquearParaExclusao(idosoId);
         jdbc.update("""
                 WITH removidas AS (DELETE FROM medicao WHERE idoso_id = ? RETURNING tipo)
                 INSERT INTO telemetria_anonima (conjunto, categoria, quantidade)
