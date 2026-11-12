@@ -4,6 +4,7 @@ import java.util.Optional;
 
 import com.seniorinsight.telemetry.domain.medicao.MedicoesHoje;
 
+/** Cache do resumo de hoje (RNF-002). Indisponível = miss: quem usa cai no banco. */
 public interface CacheMedicoesHoje {
 
     Optional<MedicoesHoje> buscar(String chave);

@@ -1,51 +1,47 @@
 package com.seniorinsight.telemetry.adapters.out.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.seniorinsight.telemetry.TesteIntegracao;
+import com.seniorinsight.telemetry.application.porta.saida.CacheMedicoesHoje;
 import com.seniorinsight.telemetry.domain.medicao.MedicoesHoje;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 
+/** Redis real em container: guarda, lê e expira em 15 min. */
+@TesteIntegracao
 class CacheMedicoesHojeRedisTest {
 
+    @Autowired CacheMedicoesHoje cache;
+    @Autowired StringRedisTemplate redis;
+
     @Test
-    @SuppressWarnings("unchecked")
-    void armazenaPorQuinzeMinutosEPreservaOsCamposNulos() {
-        var redis = mock(StringRedisTemplate.class);
-        ValueOperations<String, String> valores = mock(ValueOperations.class);
-        when(redis.opsForValue()).thenReturn(valores);
-        var cache = new CacheMedicoesHojeRedis(redis, JsonMapper.builder().addModule(new JavaTimeModule()).build(), true);
-        var medicoes = new MedicoesHoje(2340L, null, null, Instant.parse("2026-11-01T17:30:00Z"));
+    void guardaELeDeVolta() {
+        String chave = "telemetry:hoje:v1:" + UUID.randomUUID();
+        MedicoesHoje medicoes = new MedicoesHoje(3200L, 78, null, Instant.parse("2026-11-10T14:30:00Z"));
 
-        cache.guardar("chave", medicoes);
+        cache.guardar(chave, medicoes);
 
-        var json = ArgumentCaptor.forClass(String.class);
-        verify(valores).set(eq("chave"), json.capture(), eq(Duration.ofMinutes(15)));
-        when(valores.get("chave")).thenReturn(json.getValue());
-        assertThat(cache.buscar("chave")).contains(medicoes);
+        assertThat(cache.buscar(chave)).contains(medicoes);
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void redisIndisponivelRetornaCacheMiss() {
-        var redis = mock(StringRedisTemplate.class);
-        ValueOperations<String, String> valores = mock(ValueOperations.class);
-        when(redis.opsForValue()).thenReturn(valores);
-        when(valores.get("chave")).thenThrow(new RedisConnectionFailureException("indisponível"));
-        var cache = new CacheMedicoesHojeRedis(redis, JsonMapper.builder().build(), true);
+    void chaveInexistenteEhMiss() {
+        assertThat(cache.buscar("telemetry:hoje:v1:" + UUID.randomUUID())).isEmpty();
+    }
 
-        assertThat(cache.buscar("chave")).isEmpty();
+    @Test
+    void entradaExpiraEm15Minutos() {
+        String chave = "telemetry:hoje:v1:" + UUID.randomUUID();
+
+        cache.guardar(chave, MedicoesHoje.VAZIO);
+
+        Duration ttl = Duration.ofSeconds(redis.getExpire(chave));
+        assertThat(ttl).isBetween(Duration.ofMinutes(14), Duration.ofMinutes(15));
     }
 }

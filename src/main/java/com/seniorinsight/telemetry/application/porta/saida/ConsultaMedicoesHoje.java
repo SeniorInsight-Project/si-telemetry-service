@@ -8,6 +8,9 @@ import com.seniorinsight.telemetry.domain.medicao.MedicoesHoje;
 
 public interface ConsultaMedicoesHoje {
 
-    MedicoesHoje buscar(UUID idosoId, LocalDate dia, Instant inicioDoDia, Instant agora,
-                        boolean passos, boolean batimentos);
+    /**
+     * Soma de passos do {@code dia} e últimas frequências cardíacas até {@code agora}. Tipo com {@code false} não é
+     * lido e vem {@code null}, e não entra em {@code coletadoEm}.
+     */
+    MedicoesHoje buscar(UUID idosoId, LocalDate dia, Instant agora, boolean passos, boolean batimentos);
 }

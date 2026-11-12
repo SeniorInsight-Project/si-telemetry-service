@@ -2,7 +2,6 @@ package com.seniorinsight.telemetry.application.porta.saida;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import com.seniorinsight.telemetry.domain.medicao.Leitura;
@@ -18,6 +17,6 @@ public interface OpenWearables {
     /** Cria o usuário do idoso no Open Wearables e devolve o id gerado lá, que deve ser guardado. */
     UUID provisionarUsuario();
 
-    /** Amostras dos tipos autorizados, juntando todas as páginas. Sem tipos, não consulta o provedor. */
-    List<Leitura> buscarLeituras(UUID usuarioOpenWearables, Instant inicio, Instant fim, Set<String> tipos);
+    /** Amostras do usuário com horário entre {@code inicio} e {@code fim}, juntando todas as páginas. */
+    List<Leitura> buscarLeituras(UUID usuarioOpenWearables, Instant inicio, Instant fim);
 }

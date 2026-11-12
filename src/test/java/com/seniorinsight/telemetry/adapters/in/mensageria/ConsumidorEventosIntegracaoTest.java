@@ -50,29 +50,23 @@ class ConsumidorEventosIntegracaoTest {
     }
 
     @Test
-    void consentimentoPublicadoNaSiEventsChegaNaFilaEAtualizaAProjecao() {
+    void eventoPublicadoNaSiEventsComRoutingKeyAssinadaChegaNaFila() {
         UUID eventoId = UUID.randomUUID();
-        UUID idosoId = UUID.randomUUID();
-        String evento = """
-                {
-                  "specversion":"1.0", "source":"/care-service", "type":"consent.changed",
-                  "time":"2026-11-01T13:15:00Z",
-                  "data":{"idosoId":"%s","tipo":"OXIGENACAO","destinatario":"REDE","autorizado":false}
-                }
-                """.formatted(idosoId);
-        Message mensagem = MessageBuilder.withBody(evento.getBytes(StandardCharsets.UTF_8))
+        // Destinatário MEDICO: o telemetry só registra o evento, sem projetar nada.
+        String corpo = """
+                {"specversion":"1.0","source":"/care-service","type":"consent.changed","time":"2026-11-08T15:30:00Z",
+                 "data":{"idosoId":"%s","tipo":"PASSOS","destinatario":"MEDICO","autorizado":true}}"""
+                .formatted(UUID.randomUUID());
+        Message mensagem = MessageBuilder.withBody(corpo.getBytes(StandardCharsets.UTF_8))
                 .setContentType(MessageProperties.CONTENT_TYPE_JSON)
                 .setMessageId(eventoId.toString())
                 .build();
 
         rabbitTemplate.send(MensageriaConfig.EXCHANGE_EVENTOS, "consent.changed", mensagem);
 
-        await().atMost(PRAZO).untilAsserted(() -> {
-            assertThat(jdbc.queryForList("SELECT tipo_evento FROM evento_recebido WHERE id = ?",
-                    String.class, eventoId)).containsExactly("consent.changed");
-            assertThat(jdbc.queryForList("SELECT autorizado FROM consentimento_rede WHERE idoso_id = ? AND tipo = ?",
-                    Boolean.class, idosoId, "OXIGENACAO")).containsExactly(false);
-        });
+        await().atMost(PRAZO).untilAsserted(() -> assertThat(jdbc.queryForList(
+                "SELECT tipo_evento FROM evento_recebido WHERE id = ?", String.class, eventoId))
+                .containsExactly("consent.changed"));
     }
 
     @Test

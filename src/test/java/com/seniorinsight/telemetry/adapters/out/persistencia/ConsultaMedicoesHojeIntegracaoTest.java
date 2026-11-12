@@ -4,68 +4,113 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import com.seniorinsight.telemetry.TesteIntegracao;
+import com.seniorinsight.telemetry.application.porta.saida.ConsentimentosRede;
 import com.seniorinsight.telemetry.application.porta.saida.ConsultaMedicoesHoje;
+import com.seniorinsight.telemetry.application.porta.saida.RepositorioMedicoes;
+import com.seniorinsight.telemetry.domain.consentimento.TipoDado;
+import com.seniorinsight.telemetry.domain.medicao.Leitura;
+import com.seniorinsight.telemetry.domain.medicao.MedicoesHoje;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.annotation.Transactional;
 
 @TesteIntegracao
-@Transactional
 class ConsultaMedicoesHojeIntegracaoTest {
 
-    private static final LocalDate DIA = LocalDate.parse("2026-11-01");
-    private static final Instant INICIO = Instant.parse("2026-11-01T03:00:00Z");
-    private static final Instant AGORA = Instant.parse("2026-11-01T17:30:00Z");
+    private static final LocalDate DIA = LocalDate.parse("2026-11-10");
+    private static final Instant MANHA = Instant.parse("2026-11-10T12:00:00Z");
+    private static final Instant AGORA = Instant.parse("2026-11-10T15:00:00Z");
 
-    @Autowired JdbcTemplate jdbc;
     @Autowired ConsultaMedicoesHoje consulta;
+    @Autowired RepositorioMedicoes medicoes;
+    @Autowired ConsentimentosRede consentimentos;
+
+    private final UUID idoso = UUID.randomUUID();
 
     @Test
-    void consultaAgregadoEUltimasLeiturasValidasApenasDosTiposAutorizados() {
-        UUID idosoId = UUID.randomUUID();
-        jdbc.update("""
-                INSERT INTO agregado_diario (idoso_id, dia, tipo, unidade, soma)
-                VALUES (?, ?, 'steps', 'count', 2340)
-                """, idosoId, DIA);
-        inserir(idosoId, "steps", 60, "2026-11-01T16:00:00Z");
-        inserir(idosoId, "heart_rate", 80, "2026-11-01T15:00:00Z");
-        inserir(idosoId, "heart_rate", 72, "2026-11-01T17:30:00Z");
-        inserir(idosoId, "heart_rate", 251, "2026-11-01T17:29:59Z");
-        inserir(idosoId, "heart_rate", 100, "2026-11-01T17:30:01Z");
-        inserir(idosoId, "resting_heart_rate", 64, "2026-11-01T10:00:00Z");
+    void somaOsPassosDoDiaEPegaAUltimaFrequencia() {
+        medicoes.gravarNovas(idoso, List.of(
+                new Leitura("steps", MANHA, 100, "passos", "app"),
+                new Leitura("steps", MANHA.plusSeconds(900), 250, "passos", "app"),
+                new Leitura("heart_rate", MANHA, 70, "bpm", "app"),
+                new Leitura("heart_rate", MANHA.plusSeconds(1800), 90, "bpm", "app"),
+                new Leitura("resting_heart_rate", MANHA, 62, "bpm", "app")));
 
-        var todos = consulta.buscar(idosoId, DIA, INICIO, AGORA, true, true);
-        assertThat(todos.passos()).isEqualTo(2340);
-        assertThat(todos.frequenciaCardiaca()).isEqualTo(72);
-        assertThat(todos.frequenciaCardiacaRepouso()).isEqualTo(64);
-        assertThat(todos.coletadoEm()).isEqualTo(AGORA);
+        MedicoesHoje hoje = consulta.buscar(idoso, DIA, AGORA, true, true);
 
-        var apenasPassos = consulta.buscar(idosoId, DIA, INICIO, AGORA, true, false);
-        assertThat(apenasPassos.frequenciaCardiaca()).isNull();
-        assertThat(apenasPassos.frequenciaCardiacaRepouso()).isNull();
-        assertThat(apenasPassos.coletadoEm()).isEqualTo(Instant.parse("2026-11-01T16:00:00Z"));
+        assertThat(hoje.passos()).isEqualTo(350);
+        assertThat(hoje.frequenciaCardiaca()).isEqualTo(90);
+        assertThat(hoje.frequenciaCardiacaRepouso()).isEqualTo(62);
+        assertThat(hoje.coletadoEm()).isEqualTo(MANHA.plusSeconds(1800));
     }
 
     @Test
-    void naoDevolveBatimentoDeOntemComoSeFosseDeHoje() {
-        UUID idosoId = UUID.randomUUID();
-        inserir(idosoId, "heart_rate", 72, "2026-11-01T02:59:59Z");
+    void tipoNaoPedidoVemNuloENaoEntraNoHorario() {
+        medicoes.gravarNovas(idoso, List.of(
+                new Leitura("steps", MANHA, 100, "passos", "app"),
+                new Leitura("heart_rate", MANHA.plusSeconds(3600), 80, "bpm", "app")));
 
-        var estado = consulta.buscar(idosoId, DIA, INICIO, AGORA, true, true);
+        MedicoesHoje soPassos = consulta.buscar(idoso, DIA, AGORA, true, false);
 
-        assertThat(estado.passos()).isNull();
-        assertThat(estado.frequenciaCardiaca()).isNull();
-        assertThat(estado.coletadoEm()).isEqualTo(Instant.parse("2026-11-01T02:59:59Z"));
+        assertThat(soPassos.passos()).isEqualTo(100);
+        assertThat(soPassos.frequenciaCardiaca()).isNull();
+        assertThat(soPassos.coletadoEm()).isEqualTo(MANHA);
+
+        MedicoesHoje soBatimentos = consulta.buscar(idoso, DIA, AGORA, false, true);
+
+        assertThat(soBatimentos.passos()).isNull();
+        assertThat(soBatimentos.frequenciaCardiaca()).isEqualTo(80);
+        assertThat(soBatimentos.coletadoEm()).isEqualTo(MANHA.plusSeconds(3600));
     }
 
-    private void inserir(UUID idosoId, String tipo, int valor, String instante) {
-        jdbc.update("""
-                INSERT INTO medicao (idoso_id, tipo, valor, unidade, medido_em, origem)
-                VALUES (?, ?, ?, 'count', ?::timestamptz, 'teste')
-                """, idosoId, tipo, valor, instante);
+    @Test
+    void passosAutorizadosSemLeituraHojeSaoZero() {
+        MedicoesHoje hoje = consulta.buscar(idoso, DIA, AGORA, true, true);
+
+        assertThat(hoje.passos()).isZero();
+        assertThat(hoje.coletadoEm()).isNull();
+    }
+
+    @Test
+    void ignoraLeiturasDeOutroIdosoEAmostrasNoFuturo() {
+        medicoes.gravarNovas(UUID.randomUUID(), List.of(new Leitura("heart_rate", MANHA, 99, "bpm", "app")));
+        medicoes.gravarNovas(idoso, List.of(
+                new Leitura("heart_rate", MANHA, 70, "bpm", "app"),
+                new Leitura("heart_rate", AGORA.plusSeconds(120), 130, "bpm", "app")));
+
+        MedicoesHoje hoje = consulta.buscar(idoso, DIA, AGORA, false, true);
+
+        assertThat(hoje.frequenciaCardiaca()).isEqualTo(70);
+    }
+
+    @Test
+    void batimentoDeOntemAindaApareceDentroDaJanelaDeRecencia() {
+        Instant ontem = Instant.parse("2026-11-09T22:00:00Z");
+        medicoes.gravarNovas(idoso, List.of(new Leitura("heart_rate", ontem, 66, "bpm", "app")));
+
+        MedicoesHoje hoje = consulta.buscar(idoso, DIA, AGORA, false, true);
+
+        assertThat(hoje.frequenciaCardiaca()).isEqualTo(66);
+        assertThat(hoje.coletadoEm()).isEqualTo(ontem);
+    }
+
+    @Test
+    void consentimentoMaisNovoVence() {
+        Instant t = Instant.parse("2026-11-08T15:30:00Z");
+        consentimentos.atualizar(idoso, TipoDado.PASSOS, true, t);
+        consentimentos.atualizar(idoso, TipoDado.PASSOS, false, t.plusSeconds(10));
+        consentimentos.atualizar(idoso, TipoDado.PASSOS, true, t.plusSeconds(5)); // atrasado: ignorado
+
+        assertThat(consentimentos.tiposAutorizados(idoso)).isEmpty();
+
+        consentimentos.atualizar(idoso, TipoDado.BATIMENTOS, true, t);
+        consentimentos.atualizar(idoso, TipoDado.BATIMENTOS, false, t); // empate: a revogação vence
+        assertThat(consentimentos.tiposAutorizados(idoso)).isEmpty();
+
+        consentimentos.atualizar(idoso, TipoDado.PASSOS, true, t.plusSeconds(20));
+        assertThat(consentimentos.tiposAutorizados(idoso)).containsExactly(TipoDado.PASSOS);
     }
 }

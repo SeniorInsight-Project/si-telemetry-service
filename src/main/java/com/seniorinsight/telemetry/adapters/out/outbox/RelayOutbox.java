@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -37,7 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 class RelayOutbox {
 
     static final String APP_ID = "telemetry-service";
-    private static final Set<String> EVENTOS_SINAL = Set.of("telemetry.signal.lost", "telemetry.signal.recovered");
 
     private static final Logger log = LoggerFactory.getLogger(RelayOutbox.class);
 
@@ -68,7 +66,7 @@ class RelayOutbox {
         for (OutboxEvento evento : pendentes) {
             CorrelationData confirmacao = new CorrelationData(evento.getId().toString());
             try {
-                rabbitTemplate.send(OutboxConfig.EXCHANGE_EVENTOS, evento.getTipoEvento(), mensagemComContrato(evento),
+                rabbitTemplate.send(OutboxConfig.EXCHANGE_EVENTOS, evento.getTipoEvento(), paraMensagem(evento),
                         confirmacao);
                 enviados.add(new Envio(evento, confirmacao));
             } catch (AmqpException e) {
@@ -86,26 +84,6 @@ class RelayOutbox {
             }
         }
         log.debug("Outbox: {} de {} eventos publicados", publicados, pendentes.size());
-    }
-
-    private static Message mensagemComContrato(OutboxEvento evento) {
-        Message mensagem = paraMensagem(evento);
-        String tipo = evento.getTipoEvento();
-        if (!EVENTOS_SINAL.contains(tipo)) {
-            return mensagem;
-        }
-
-        String envelope = """
-                {"specversion":"1.0","id":"%s","source":"/telemetry-service","type":"%s",
-                 "time":"%s","datacontenttype":"application/json",
-                 "dataschema":"https://raw.githubusercontent.com/SeniorInsight-Project/si-contracts/main/events/%s.v1.json",
-                 "subject":"%s","data":%s}
-                """.formatted(evento.getId(), tipo, evento.getCriadoEm(), tipo, evento.getAgregadoId(),
-                evento.getPayload());
-        return MessageBuilder.withBody(envelope.getBytes(StandardCharsets.UTF_8))
-                .copyProperties(mensagem.getMessageProperties())
-                .setContentType("application/cloudevents+json")
-                .build();
     }
 
     private boolean aguardarConfirmacao(Envio envio, long prazo) {

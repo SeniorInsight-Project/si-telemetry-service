@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Set;
 import java.util.UUID;
 
 import com.seniorinsight.telemetry.ServidorHttpFalso;
@@ -82,7 +81,7 @@ class ClienteOpenWearablesTest {
                  "pagination": {"next_cursor": null, "has_more": false}}
                 """);
 
-        assertThat(cliente.buscarLeituras(USUARIO, INICIO, FIM, Set.of("heart_rate", "steps"))).containsExactly(
+        assertThat(cliente.buscarLeituras(USUARIO, INICIO, FIM)).containsExactly(
                 new Leitura("heart_rate", Instant.parse("2026-10-31T00:05:00Z"), 72, "bpm", "apple"),
                 new Leitura("steps", Instant.parse("2026-10-31T00:10:00Z"), 120, "count", "open_wearables"));
 
@@ -90,8 +89,8 @@ class ClienteOpenWearablesTest {
         ServidorHttpFalso.Requisicao primeira = servidor.requisicoes().get(0);
         assertThat(primeira.caminho()).isEqualTo("/api/v1/users/" + USUARIO + "/timeseries");
         assertThat(primeira.query()).contains("start_time=2026-10-31T00:00:00Z", "end_time=2026-10-31T00:15:00Z")
-                .contains("types=heart_rate,steps").doesNotContain("cursor");
-        assertThat(servidor.requisicoes().get(1).query()).contains("cursor=c2", "types=heart_rate,steps");
+                .doesNotContain("cursor");
+        assertThat(servidor.requisicoes().get(1).query()).contains("cursor=c2");
     }
 
     @Test
@@ -106,7 +105,7 @@ class ClienteOpenWearablesTest {
     void naoRepeteErroDoCliente() {
         servidor.responder(404, "{\"detail\": \"User not found\"}");
 
-        assertThatThrownBy(() -> cliente.buscarLeituras(USUARIO, INICIO, FIM, Set.of("steps")))
+        assertThatThrownBy(() -> cliente.buscarLeituras(USUARIO, INICIO, FIM))
                 .isInstanceOf(HttpClientErrorException.NotFound.class);
         assertThat(servidor.requisicoes()).hasSize(1);
     }
