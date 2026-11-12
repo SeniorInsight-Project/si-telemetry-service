@@ -10,14 +10,12 @@ import java.util.List;
 import java.util.UUID;
 
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.MigrationInfo;
-import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** O contexto subir já prova que o Hibernate validou o mapeamento ({@code ddl-auto: validate}) contra as migrações. */
+/** O contexto subir já prova que o Hibernate validou o mapeamento ({@code ddl-auto: validate}) contra a V1. */
 @TesteIntegracao
 class EstruturaBancoTest {
 
@@ -31,12 +29,11 @@ class EstruturaBancoTest {
 
     @Test
     void flywayAplicaAsMigracoesNoSchemaTelemetry() {
-        assertThat(flyway.info().applied()).extracting(MigrationInfo::getVersion)
-                .contains(MigrationVersion.fromVersion("1"), MigrationVersion.fromVersion("2"));
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
         assertThat(jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'telemetry'", String.class))
-                .contains("medicao", "agregado_diario", "status_aparelho", "consentimento_rede", "outbox_evento",
-                        "evento_recebido", "flyway_schema_history");
+                .contains("medicao", "agregado_diario", "status_aparelho", "outbox_evento", "evento_recebido", "consentimento_rede",
+                        "flyway_schema_history");
     }
 
     @Test

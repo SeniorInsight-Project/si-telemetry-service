@@ -4,7 +4,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.seniorinsight.telemetry.application.porta.saida.OpenWearables;
-import com.seniorinsight.telemetry.application.porta.saida.StatusAparelhoRepositorio;
+import com.seniorinsight.telemetry.application.porta.saida.ConsentimentosRede;
 import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables.Vinculo;
 import org.springframework.stereotype.Service;
@@ -13,13 +13,13 @@ import org.springframework.transaction.support.TransactionOperations;
 @Service
 public class VincularOpenWearables {
 
-    private final StatusAparelhoRepositorio consentimentos;
+    private final ConsentimentosRede consentimentos;
     private final VinculosOpenWearables vinculos;
     private final OpenWearables openWearables;
     private final ReferenciaOpenWearables referencias;
     private final TransactionOperations transacoes;
 
-    public VincularOpenWearables(StatusAparelhoRepositorio consentimentos, VinculosOpenWearables vinculos,
+    public VincularOpenWearables(ConsentimentosRede consentimentos, VinculosOpenWearables vinculos,
             OpenWearables openWearables, ReferenciaOpenWearables referencias, TransactionOperations transacoes) {
         this.consentimentos = consentimentos;
         this.vinculos = vinculos;
@@ -46,7 +46,7 @@ public class VincularOpenWearables {
                     return openWearables.provisionarUsuario(referencia);
                 });
         return transacoes.execute(status -> {
-            consentimentos.bloquearConsentimentos(idosoId);
+            consentimentos.bloquear(idosoId);
             // Mesmo após revogação, mantenha o vínculo para uma futura exclusão da conta.
             var atual = vinculos.buscar(idosoId);
             if (atual.isEmpty()) {
