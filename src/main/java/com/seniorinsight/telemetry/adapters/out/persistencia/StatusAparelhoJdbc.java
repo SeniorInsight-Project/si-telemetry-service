@@ -13,6 +13,8 @@ import com.seniorinsight.telemetry.domain.aparelho.StatusAparelho;
 import com.seniorinsight.telemetry.domain.aparelho.TipoDado;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 class StatusAparelhoJdbc implements StatusAparelhoRepositorio {
@@ -21,6 +23,19 @@ class StatusAparelhoJdbc implements StatusAparelhoRepositorio {
 
     StatusAparelhoJdbc(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @Override
+    public List<TipoDado> buscarTiposAtivosRede(UUID idosoId) {
+        return jdbc.query("""
+                SELECT tipo FROM consentimento_rede WHERE idoso_id = ? AND autorizado ORDER BY tipo
+                """, (rs, linha) -> TipoDado.valueOf(rs.getString("tipo")), idosoId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void bloquearConsentimentos(UUID idosoId) {
+        jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(CAST(? AS text), 0))", rs -> null, idosoId);
     }
 
     @Override
@@ -76,7 +91,9 @@ class StatusAparelhoJdbc implements StatusAparelhoRepositorio {
     }
 
     @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public void atualizarConsentimentoRede(UUID idosoId, TipoDado tipo, boolean autorizado, Instant ocorridoEm) {
+        bloquearConsentimentos(idosoId);
         jdbc.update("""
                 INSERT INTO consentimento_rede (idoso_id, tipo, autorizado, ocorrido_em)
                 VALUES (?, ?, ?, ?)

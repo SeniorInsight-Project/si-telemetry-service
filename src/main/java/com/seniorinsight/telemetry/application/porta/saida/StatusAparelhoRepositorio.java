@@ -14,6 +14,8 @@ public interface StatusAparelhoRepositorio {
 
     List<TipoDado> buscarTiposAtivosRede(UUID idosoId);
 
+    void bloquearConsentimentos(UUID idosoId);
+
     void registrar(UUID idosoId, Instant sincronizadoEm, Integer nivelBateria, String versaoApp,
                    String modeloCelular, String sistemaOperacional);
 

@@ -124,7 +124,7 @@ class ConsultarEstadoAtualTest {
 
     private ConsultarEstadoAtual.EstadoAtual consultarEm(Instant agora) {
         var consulta = new ConsultarEstadoAtual(new VerificarAcessoIdoso(vinculo), consentimentos, medicoes, cache,
-                Clock.fixed(agora, ZoneOffset.UTC), FUSO, 4000);
+                Clock.fixed(agora, ZoneOffset.UTC), FUSO.getId(), 4000);
         return consulta.consultar(IDOSO, SUB);
     }
 

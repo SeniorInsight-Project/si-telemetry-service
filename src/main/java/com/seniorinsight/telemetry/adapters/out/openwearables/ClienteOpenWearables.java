@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -51,19 +52,24 @@ class ClienteOpenWearables implements OpenWearables {
     }
 
     @Override
-    public List<Leitura> buscarLeituras(UUID usuarioOpenWearables, Instant inicio, Instant fim) {
+    public List<Leitura> buscarLeituras(UUID usuarioOpenWearables, Instant inicio, Instant fim, Set<String> tipos) {
+        if (tipos.isEmpty()) {
+            return List.of();
+        }
+        String filtro = String.join(",", tipos.stream().sorted().toList());
         List<Leitura> leituras = new ArrayList<>();
         String cursor = null;
         do {
             String cursorAtual = cursor;
             PaginaAmostras pagina = chamar("buscar leituras", () -> restClient.get()
-                    .uri(uri -> urlSerieTemporal(uri, usuarioOpenWearables, inicio, fim, cursorAtual))
+                    .uri(uri -> urlSerieTemporal(uri, usuarioOpenWearables, inicio, fim, filtro, cursorAtual))
                     .retrieve()
                     .body(PaginaAmostras.class));
             if (pagina == null || pagina.data() == null) {
                 break;
             }
-            pagina.data().stream().map(ClienteOpenWearables::paraLeitura).forEach(leituras::add);
+            pagina.data().stream().filter(amostra -> tipos.contains(amostra.type()))
+                    .map(ClienteOpenWearables::paraLeitura).forEach(leituras::add);
             cursor = pagina.pagination() != null && pagina.pagination().hasMore()
                     ? pagina.pagination().nextCursor()
                     : null;
@@ -72,10 +78,11 @@ class ClienteOpenWearables implements OpenWearables {
     }
 
     private static URI urlSerieTemporal(UriBuilder uri, UUID usuario, Instant inicio, Instant fim,
-                                    String cursor) {
+                                    String tipos, String cursor) {
         uri.path("/api/v1/users/{usuario}/timeseries")
                 .queryParam("start_time", inicio)
                 .queryParam("end_time", fim)
+                .queryParam("types", tipos)
                 .queryParam("limit", TAMANHO_PAGINA);
         if (cursor != null) {
             uri.queryParam("cursor", cursor);

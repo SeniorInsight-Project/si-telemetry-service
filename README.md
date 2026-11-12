@@ -73,8 +73,14 @@ O serviço mantém o registro mais recente.
 Para projetar `tiposAtivos`, o consumidor de `consent.changed` espera um CloudEvent
 estruturado do care-service com `time` e `data` contendo `idosoId`, `tipo`
 (enum `TipoDado` de telemetry-v1), `destinatario` e `autorizado` (booleano).
-A tela do familiar usa somente consentimentos para `REDE`. A publicação desse
-payload pelo care-service depende de si-care-service#92.
+A tela do familiar usa somente consentimentos para `REDE`. O evento segue
+`consent.changed.v1` do si-contracts.
+
+A rotina `ColetarMedicoesAutorizadas` usa essa projeção para pedir ao Open
+Wearables somente séries autorizadas e confere a projeção de novo antes de
+gravar, inclusive se uma revogação chegar durante a requisição HTTP. Sem
+séries autorizadas a rotina não consulta o provedor. O agendamento e o vínculo
+com o usuário no provedor entram na integração da HU-023 (#5).
 
 A consulta `/hoje` usa a soma de passos em `agregado_diario` e as últimas
 amostras válidas de `heart_rate` e `resting_heart_rate` do dia. O serviço
