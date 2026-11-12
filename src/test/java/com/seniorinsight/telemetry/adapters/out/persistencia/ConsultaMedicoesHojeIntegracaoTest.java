@@ -31,11 +31,11 @@ class ConsultaMedicoesHojeIntegracaoTest {
     private final UUID idoso = UUID.randomUUID();
 
     @Test
-    void somaOsPassosDoDiaEPegaAUltimaFrequencia() {
+    void somaOsPassosDoDiaEEscolheAFrequenciaMaisRecenteMesmoQuandoElaEMenor() {
         medicoes.gravarNovas(idoso, List.of(
                 new Leitura("steps", MANHA, 100, "passos", "app"),
                 new Leitura("steps", MANHA.plusSeconds(900), 250, "passos", "app"),
-                new Leitura("heart_rate", MANHA, 70, "bpm", "app"),
+                new Leitura("heart_rate", MANHA, 95, "bpm", "app"),
                 new Leitura("heart_rate", MANHA.plusSeconds(1800), 90, "bpm", "app"),
                 new Leitura("resting_heart_rate", MANHA, 62, "bpm", "app")));
 
