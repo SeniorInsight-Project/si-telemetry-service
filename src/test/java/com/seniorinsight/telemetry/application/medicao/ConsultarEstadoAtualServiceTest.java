@@ -48,7 +48,7 @@ class ConsultarEstadoAtualServiceTest {
     private final CacheMedicoesHoje cache = mock(CacheMedicoesHoje.class);
     private final ConsultarEstadoAtualService servico = new ConsultarEstadoAtualService(
             new VerificarAcessoIdoso(vinculo), consentimentos, medicoes, cache,
-            Clock.fixed(AGORA, ZoneOffset.UTC), FUSO, 4000);
+            Clock.fixed(AGORA, ZoneOffset.UTC), FUSO.getId(), 4000);
 
     ConsultarEstadoAtualServiceTest() {
         when(vinculo.papelDoUsuario(IDOSO, SUB)).thenReturn(Optional.of(Papel.FAMILIAR_APOIO));
@@ -71,7 +71,7 @@ class ConsultarEstadoAtualServiceTest {
         // 02:00Z de 11/11 ainda é 10/11 em São Paulo.
         Instant madrugada = Instant.parse("2026-11-11T02:00:00Z");
         var noite = new ConsultarEstadoAtualService(new VerificarAcessoIdoso(vinculo), consentimentos, medicoes,
-                cache, Clock.fixed(madrugada, ZoneOffset.UTC), FUSO, 4000);
+                cache, Clock.fixed(madrugada, ZoneOffset.UTC), FUSO.getId(), 4000);
         when(consentimentos.tiposAutorizados(IDOSO)).thenReturn(Set.of(TipoDado.PASSOS));
         when(medicoes.buscar(any(), any(), any(), anyBoolean(), anyBoolean())).thenReturn(MedicoesHoje.VAZIO);
 

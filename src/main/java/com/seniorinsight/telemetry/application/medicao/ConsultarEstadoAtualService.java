@@ -17,7 +17,6 @@ import com.seniorinsight.telemetry.application.porta.saida.ConsultaMedicoesHoje;
 import com.seniorinsight.telemetry.domain.acesso.Papel;
 import com.seniorinsight.telemetry.domain.consentimento.TipoDado;
 import com.seniorinsight.telemetry.domain.medicao.MedicoesHoje;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -41,17 +40,10 @@ class ConsultarEstadoAtualService implements ConsultarEstadoAtual {
     private final ZoneId fuso;
     private final int metaPassos;
 
-    @Autowired
     ConsultarEstadoAtualService(VerificarAcessoIdoso acesso, ConsentimentosRede consentimentos,
-                                ConsultaMedicoesHoje medicoes, CacheMedicoesHoje cache,
+                                ConsultaMedicoesHoje medicoes, CacheMedicoesHoje cache, Clock relogio,
                                 @Value("${telemetry.hoje.fuso}") String fuso,
                                 @Value("${telemetry.hoje.meta-passos}") int metaPassos) {
-        this(acesso, consentimentos, medicoes, cache, Clock.systemUTC(), ZoneId.of(fuso), metaPassos);
-    }
-
-    ConsultarEstadoAtualService(VerificarAcessoIdoso acesso, ConsentimentosRede consentimentos,
-                                ConsultaMedicoesHoje medicoes, CacheMedicoesHoje cache, Clock relogio, ZoneId fuso,
-                                int metaPassos) {
         if (metaPassos < 0) {
             throw new IllegalArgumentException("telemetry.hoje.meta-passos deve ser maior ou igual a zero");
         }
@@ -60,7 +52,7 @@ class ConsultarEstadoAtualService implements ConsultarEstadoAtual {
         this.medicoes = medicoes;
         this.cache = cache;
         this.relogio = relogio;
-        this.fuso = fuso;
+        this.fuso = ZoneId.of(fuso);
         this.metaPassos = metaPassos;
     }
 
