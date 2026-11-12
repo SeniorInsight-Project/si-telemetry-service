@@ -17,6 +17,8 @@ import java.util.UUID;
 import com.seniorinsight.telemetry.application.acesso.VerificarAcessoIdoso;
 import com.seniorinsight.telemetry.application.aparelho.StatusAparelhoService;
 import com.seniorinsight.telemetry.application.porta.saida.ConsultaVinculo;
+import com.seniorinsight.telemetry.application.porta.saida.MonitoramentoSinalRepositorio;
+import com.seniorinsight.telemetry.application.porta.saida.PublicadorEventos;
 import com.seniorinsight.telemetry.application.porta.saida.StatusAparelhoRepositorio;
 import com.seniorinsight.telemetry.domain.acesso.Papel;
 import com.seniorinsight.telemetry.domain.aparelho.StatusAparelho;
@@ -44,6 +46,8 @@ class StatusAparelhoControllerTest {
     @MockitoBean JwtDecoder jwtDecoder;
     @MockitoBean ConsultaVinculo consultaVinculo;
     @MockitoBean StatusAparelhoRepositorio repositorio;
+    @MockitoBean MonitoramentoSinalRepositorio monitoramento;
+    @MockitoBean PublicadorEventos eventos;
 
     @Test
     void familiarVinculadoRecebeOsCamposDoContrato() throws Exception {

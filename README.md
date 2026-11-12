@@ -2,6 +2,11 @@
 
 Serviço de telemetria: provisiona o usuário no Open Wearables, lê a API dele a cada 15 min, descarta valores fora de faixa, agrega por dia, calcula a linha de base e detecta perda de sinal, bateria baixa e inatividade. Publica `telemetry.ingested`, `telemetry.signal.lost`, `telemetry.battery.low` e `telemetry.inactivity` na exchange `si.events`.
 
+A perda e o retorno do sinal são publicados como CloudEvents em
+`telemetry.signal.lost` e `telemetry.signal.recovered`. Os schemas v1 ficam
+no repositório `si-contracts`. O `id` do CloudEvent é o mesmo `message_id`
+do RabbitMQ e permanece estável nas reentregas.
+
 Parte do SeniorInsight — ver o Documento de Arquitetura de Software (seção 6) para as convenções.
 
 Branches: `main` (produção) e `develop` (testes, branch padrão). Trabalhe na branch criada pelo card e abra PR para `develop` — ver [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -81,6 +86,12 @@ O dia usa `TELEMETRY_HOJE_FUSO` (padrão `America/Sao_Paulo`) e a meta padrão
 é `TELEMETRY_META_PASSOS` (4000). Para usar o cache de 15 min, configure
 `TELEMETRY_REDIS_ENABLED=true` e `SPRING_DATA_REDIS_URL` no ambiente.
 Se o Redis estiver indisponível, a consulta usa o PostgreSQL.
+O monitor de sincronização roda a cada 15 min entre 07:00 e 22:00 no fuso
+`America/Sao_Paulo` e registra perda após 3 h sem sincronizar. O primeiro
+registro de sincronização posterior à perda rearma o monitor. A perda e o
+retorno são publicados pela outbox na exchange `si.events`.
+Os ajustes são `TELEMETRY_SINAL_CRON`, `TELEMETRY_SINAL_TOLERANCIA`,
+`TELEMETRY_SINAL_FUSO`, `TELEMETRY_SINAL_INICIO` e `TELEMETRY_SINAL_FIM`.
 
 ## Variáveis de ambiente
 

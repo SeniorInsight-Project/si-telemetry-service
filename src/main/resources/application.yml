@@ -63,6 +63,12 @@ telemetry:
     fuso: ${TELEMETRY_HOJE_FUSO:America/Sao_Paulo}
     meta-passos: ${TELEMETRY_META_PASSOS:4000}
     cache-redis-ativo: ${TELEMETRY_REDIS_ENABLED:false}
+  sinal:
+    cron: "${TELEMETRY_SINAL_CRON:0 */15 * * * *}"
+    tolerancia: ${TELEMETRY_SINAL_TOLERANCIA:PT3H}
+    fuso: ${TELEMETRY_SINAL_FUSO:America/Sao_Paulo}
+    inicio: "${TELEMETRY_SINAL_INICIO:07:00}"
+    fim: "${TELEMETRY_SINAL_FIM:22:00}"
   outbox:
     relay:
       intervalo: PT1S
