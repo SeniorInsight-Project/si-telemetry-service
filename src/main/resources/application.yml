@@ -3,6 +3,14 @@ spring:
   application:
     name: telemetry-service
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Cache opcional: Redis lento ou fora do ar não pode atrasar a consulta, que segue pelo PostgreSQL.
+      connect-timeout: 250ms
+      timeout: 250ms
+
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:seniorinsight}
     username: ${DB_USERNAME}
@@ -40,6 +48,10 @@ server:
   forward-headers-strategy: framework
 
 management:
+  health:
+    redis:
+      # O cache é opcional: Redis fora do ar não tira o serviço do ar.
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -50,12 +62,12 @@ management:
         enabled: true
 
 telemetry:
-  sinal:
-    cron: "${TELEMETRY_SINAL_CRON:0 */15 * * * *}"
-    tolerancia: ${TELEMETRY_SINAL_TOLERANCIA:PT3H}
-    fuso: ${TELEMETRY_SINAL_FUSO:America/Sao_Paulo}
-    inicio: "${TELEMETRY_SINAL_INICIO:07:00}"
-    fim: "${TELEMETRY_SINAL_FIM:22:00}"
+  hoje:
+    # Fuso que define o "dia" do resumo diário (RF-025) e da consulta de hoje.
+    fuso: ${TELEMETRY_HOJE_FUSO:America/Sao_Paulo}
+    meta-passos: ${TELEMETRY_META_PASSOS:4000}
+    # Cache de 15 min no Redis (RNF-002); desligado por padrão até o Redis existir no ambiente.
+    cache-redis-ativo: ${TELEMETRY_REDIS_ENABLED:false}
   outbox:
     relay:
       intervalo: PT1S
