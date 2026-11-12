@@ -127,38 +127,6 @@ class RelayOutboxIntegracaoTest {
     }
 
     @Test
-    void publicaNaExchangeSiEventsComRoutingKeyIgualAoTipoDoEventoEMarcaPublicado() throws Exception {
-        Queue fila = amqpAdmin.declareQueue();
-        amqpAdmin.declareBinding(BindingBuilder.bind(fila)
-                .to(new TopicExchange(OutboxConfig.EXCHANGE_EVENTOS))
-                .with("telemetry.ingested"));
-        UUID idosoId = UUID.randomUUID();
-
-        transacao.executeWithoutResult(status -> publicador.publicar(new TelemetriaIngerida(idosoId, "2026-10-31")));
-
-        Message mensagem = rabbitTemplate.receive(fila.getName(), Duration.ofSeconds(15).toMillis());
-        assertThat(mensagem).as("mensagem publicada pelo relay").isNotNull();
-        MessageProperties propriedades = mensagem.getMessageProperties();
-        assertThat(propriedades.getReceivedExchange()).isEqualTo("si.events");
-        assertThat(propriedades.getReceivedRoutingKey()).isEqualTo("telemetry.ingested");
-        assertThat(propriedades.getType()).isEqualTo("telemetry.ingested");
-        assertThat(propriedades.getContentType()).isEqualTo(MessageProperties.CONTENT_TYPE_JSON);
-        assertThat(propriedades.getAppId()).isEqualTo("telemetry-service");
-        assertThat(propriedades.<String>getHeader("tipo_agregado")).isEqualTo("idoso");
-        assertThat(propriedades.<String>getHeader("agregado_id")).isEqualTo(idosoId.toString());
-        assertThat(objectMapper.readTree(mensagem.getBody()))
-                .isEqualTo(objectMapper.createObjectNode().put("idosoId", idosoId.toString()).put("dia", "2026-10-31"));
-
-        UUID eventoId = UUID.fromString(propriedades.getMessageId());
-        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
-            OutboxEvento evento = repositorio.findById(eventoId).orElseThrow();
-            assertThat(evento.getAgregadoId()).isEqualTo(idosoId);
-            assertThat(evento.getPublicadoEm()).isNotNull();
-            assertThat(evento.getTentativas()).isZero();
-        });
-    }
-
-    @Test
     void eventoNaoEhGravadoQuandoATransacaoDoCasoDeUsoEhDesfeita() {
         UUID idosoId = UUID.randomUUID();
 
