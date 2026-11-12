@@ -3,26 +3,30 @@ package com.seniorinsight.telemetry.adapters.out.persistencia;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seniorinsight.telemetry.TesteIntegracao;
 import com.seniorinsight.telemetry.application.lgpd.TratarExclusao;
-import com.seniorinsight.telemetry.application.medicao.ReferenciaOpenWearables;
-import com.seniorinsight.telemetry.application.porta.entrada.EventoRecebido;
 import com.seniorinsight.telemetry.application.porta.saida.OpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.PublicadorEventos;
-import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.ExclusaoDadosRepositorio;
+import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables;
+import com.seniorinsight.telemetry.application.medicao.ReferenciaOpenWearables;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 @TesteIntegracao
 @Transactional
@@ -32,9 +36,10 @@ class ExclusaoIntegracaoTest {
     @Autowired EntityManager entidades;
     @Autowired ObjectMapper json;
     @Autowired PublicadorEventos eventos;
+    @Autowired ExclusaoDadosRepositorio repositorio;
+    @Autowired TransactionOperations transacoes;
     @Autowired VinculosOpenWearables vinculos;
     @Autowired ReferenciaOpenWearables referencias;
-    @Autowired ExclusaoDadosRepositorio repositorio;
 
     @Test
     void apagaVinculoExternoEReuneContagensSemIdentificarOTitular() {
@@ -49,7 +54,7 @@ class ExclusaoIntegracaoTest {
                 """, titular);
         jdbc.update("INSERT INTO status_aparelho (idoso_id) VALUES (?)", titular);
         var provedor = mock(OpenWearables.class);
-        var tratador = new TratarExclusao(json, repositorio, eventos, provedor, vinculos, referencias);
+        var tratador = new TratarExclusao(repositorio, eventos, provedor, transacoes, vinculos, referencias);
 
         enviar(tratador, protocolo, titular);
         enviar(tratador, protocolo, titular);
@@ -70,7 +75,7 @@ class ExclusaoIntegracaoTest {
         UUID protocolo = UUID.randomUUID();
         inserirMedicao(titular);
         var provedor = mock(OpenWearables.class);
-        var tratador = new TratarExclusao(json, repositorio, eventos, provedor, vinculos, referencias);
+        var tratador = new TratarExclusao(repositorio, eventos, provedor, transacoes, vinculos, referencias);
 
         assertThatThrownBy(() -> enviar(tratador, protocolo, titular)).hasMessageContaining("reconciliação do vínculo");
         verifyNoInteractions(provedor);
@@ -79,11 +84,60 @@ class ExclusaoIntegracaoTest {
                 .isEmpty();
     }
 
+    @Test
+    void falhaDoProvedorPreservaVinculoEPermiteTentarONovoPedido() {
+        UUID titular = UUID.randomUUID();
+        UUID usuario = UUID.randomUUID();
+        UUID protocolo = UUID.randomUUID();
+        jdbc.update("INSERT INTO usuario_open_wearables (idoso_id, usuario_id) VALUES (?, ?)", titular, usuario);
+        var provedor = mock(OpenWearables.class);
+        doThrow(new IllegalStateException("provedor indisponível")).doNothing().when(provedor).excluirUsuario(usuario);
+        var tratador = new TratarExclusao(repositorio, eventos, provedor, transacoes, vinculos, referencias);
+
+        assertThatThrownBy(() -> enviar(tratador, protocolo, titular)).hasMessageContaining("indisponível");
+        assertThat(repositorio.confirmado(protocolo)).isFalse();
+        assertThat(jdbc.queryForList("SELECT usuario_id FROM usuario_open_wearables WHERE idoso_id = ?",
+                UUID.class, titular)).containsExactly(usuario);
+        enviar(tratador, protocolo, titular);
+        confirmar(protocolo);
+    }
+
     private void inserirMedicao(UUID titular) {
         jdbc.update("""
                 INSERT INTO medicao (idoso_id, tipo, valor, unidade, medido_em, origem)
                 VALUES (?, 'steps', 150, 'count', now(), 'teste')
                 """, titular);
+    }
+
+    @Test
+    void duasSessoesNaoExecutamEmParaleloParaOMesmoIdoso() throws Exception {
+        UUID idoso = UUID.randomUUID();
+        var obteve = new CountDownLatch(1);
+        var liberar = new CountDownLatch(1);
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            var primeira = exec.submit(() -> vinculos.executarExclusivo(idoso, () -> {
+                obteve.countDown();
+                try {
+                    if (!liberar.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Tempo esgotado no teste");
+                    }
+                } catch (InterruptedException erro) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(erro);
+                }
+            }));
+            try {
+                assertThat(obteve.await(10, TimeUnit.SECONDS)).isTrue();
+                var duplicada = exec.submit(() -> vinculos.executarExclusivo(idoso, () -> {
+                    throw new AssertionError("Uma segunda sessão obteve o mesmo bloqueio");
+                }));
+                assertThat(duplicada.get(10, TimeUnit.SECONDS)).isFalse();
+            } finally {
+                liberar.countDown();
+            }
+            assertThat(primeira.get(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(vinculos.executarExclusivo(idoso, () -> { })).isTrue();
+        }
     }
     private void confirmar(UUID protocolo) {
         entidades.flush();
@@ -94,13 +148,6 @@ class ExclusaoIntegracaoTest {
     }
 
     private void enviar(TratarExclusao tratador, UUID protocolo, UUID titular) {
-        UUID mensagem = UUID.randomUUID();
-        String corpo = """
-                {"specversion":"1.0","id":"%s","source":"/report-service","type":"lgpd.erasure.requested",
-                 "time":"2026-11-08T15:30:00Z","datacontenttype":"application/json",
-                 "dataschema":"https://raw.githubusercontent.com/SeniorInsight-Project/si-contracts/main/events/lgpd.erasure.requested.v1.json",
-                 "subject":"%s","data":{"protocolo":"%s","titularId":"%s","tipoTitular":"%s","titularSub":"%s"}}
-                """.formatted(mensagem, protocolo, protocolo, titular, "IDOSO", "sub-idoso");
-        tratador.tratar(new EventoRecebido(mensagem, TratarExclusao.TIPO, corpo));
+        tratador.tratar(new TratarExclusao.Pedido(protocolo, titular, "sub-idoso", true));
     }
 }

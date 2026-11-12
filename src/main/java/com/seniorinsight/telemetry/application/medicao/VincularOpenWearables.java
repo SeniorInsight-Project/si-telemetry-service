@@ -8,7 +8,7 @@ import com.seniorinsight.telemetry.application.porta.saida.StatusAparelhoReposit
 import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables.Vinculo;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 @Service
 public class VincularOpenWearables {
@@ -17,18 +17,18 @@ public class VincularOpenWearables {
     private final VinculosOpenWearables vinculos;
     private final OpenWearables openWearables;
     private final ReferenciaOpenWearables referencias;
+    private final TransactionOperations transacoes;
 
     public VincularOpenWearables(StatusAparelhoRepositorio consentimentos, VinculosOpenWearables vinculos,
-            OpenWearables openWearables, ReferenciaOpenWearables referencias) {
+            OpenWearables openWearables, ReferenciaOpenWearables referencias, TransactionOperations transacoes) {
         this.consentimentos = consentimentos;
         this.vinculos = vinculos;
         this.openWearables = openWearables;
         this.referencias = referencias;
+        this.transacoes = transacoes;
     }
 
-    @Transactional
     public Optional<Vinculo> obter(UUID idosoId) {
-        consentimentos.bloquearConsentimentos(idosoId);
         if (vinculos.inicioAutorizado(idosoId).isEmpty()) {
             return Optional.empty();
         }
@@ -45,7 +45,15 @@ public class VincularOpenWearables {
                     }
                     return openWearables.provisionarUsuario(referencia);
                 });
-        vinculos.vincular(idosoId, usuarioId);
-        return Optional.of(new Vinculo(usuarioId, null));
+        return transacoes.execute(status -> {
+            consentimentos.bloquearConsentimentos(idosoId);
+            // Mesmo após revogação, mantenha o vínculo para uma futura exclusão da conta.
+            var atual = vinculos.buscar(idosoId);
+            if (atual.isEmpty()) {
+                vinculos.vincular(idosoId, usuarioId);
+                atual = Optional.of(new Vinculo(usuarioId, null));
+            }
+            return vinculos.inicioAutorizado(idosoId).isPresent() ? atual : Optional.empty();
+        });
     }
 }

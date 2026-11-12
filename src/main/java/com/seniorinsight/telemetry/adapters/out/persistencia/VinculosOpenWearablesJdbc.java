@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -16,6 +17,8 @@ class VinculosOpenWearablesJdbc implements VinculosOpenWearables {
 
     private static final String AUTORIZADOS = """
             autorizado AND tipo IN ('BATIMENTOS', 'PASSOS', 'OXIGENACAO', 'SONO')
+            AND NOT EXISTS (SELECT 1 FROM titular_excluido t
+                WHERE t.chave = sha256(convert_to(consentimento_rede.idoso_id::text, 'UTF8')))
             """;
 
     private final JdbcTemplate jdbc;
@@ -27,6 +30,31 @@ class VinculosOpenWearablesJdbc implements VinculosOpenWearables {
     @Override
     public List<UUID> idososAutorizados() {
         return jdbc.queryForList("SELECT DISTINCT idoso_id FROM consentimento_rede WHERE " + AUTORIZADOS, UUID.class);
+    }
+
+    @Override
+    public boolean executarExclusivo(UUID idosoId, Runnable trabalho) {
+        return Boolean.TRUE.equals(jdbc.execute((ConnectionCallback<Boolean>) conexao -> {
+            String chave = "wearables:" + idosoId;
+            try (var obter = conexao.prepareStatement("SELECT pg_try_advisory_lock(hashtextextended(?, 0))")) {
+                obter.setString(1, chave);
+                try (var resultado = obter.executeQuery()) {
+                    resultado.next();
+                    if (!resultado.getBoolean(1)) {
+                        return false;
+                    }
+                }
+            }
+            try {
+                trabalho.run();
+                return true;
+            } finally {
+                try (var liberar = conexao.prepareStatement("SELECT pg_advisory_unlock(hashtextextended(?, 0))")) {
+                    liberar.setString(1, chave);
+                    liberar.execute();
+                }
+            }
+        }));
     }
 
     @Override

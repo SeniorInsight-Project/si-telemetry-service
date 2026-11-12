@@ -9,6 +9,8 @@ public interface VinculosOpenWearables {
 
     List<UUID> idososAutorizados();
 
+    boolean executarExclusivo(UUID idosoId, Runnable trabalho);
+
     Optional<Vinculo> buscar(UUID idosoId);
 
     Optional<Instant> inicioAutorizado(UUID idosoId);
