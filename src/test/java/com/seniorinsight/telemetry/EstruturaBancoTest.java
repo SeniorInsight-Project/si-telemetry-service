@@ -29,11 +29,12 @@ class EstruturaBancoTest {
 
     @Test
     void flywayAplicaAsMigracoesNoSchemaTelemetry() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
+        assertThat(flyway.info().applied()).extracting(migracao -> migracao.getVersion().getVersion())
+                .contains("1", "2", "3", "4");
         assertThat(jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'telemetry'", String.class))
                 .contains("medicao", "agregado_diario", "status_aparelho", "outbox_evento", "evento_recebido", "consentimento_rede",
-                        "flyway_schema_history");
+                        "flyway_schema_history", "titular_excluido", "exclusao_confirmada", "usuario_open_wearables");
     }
 
     @Test
