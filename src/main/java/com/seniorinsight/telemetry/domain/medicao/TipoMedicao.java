@@ -61,6 +61,14 @@ public enum TipoMedicao {
         }).map(TipoMedicao::codigo).collect(Collectors.toUnmodifiableSet());
     }
 
+    public double minimo() {
+        return minimo;
+    }
+
+    public double maximo() {
+        return maximo;
+    }
+
     /** Monta a leitura deste tipo; a validação de faixa é feita por quem chama, com {@link #valorValido}. */
     public Leitura leitura(java.time.Instant medidaEm, double valor, String origem) {
         return new Leitura(codigo, medidaEm, valor, unidade, origem);
