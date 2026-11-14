@@ -38,15 +38,8 @@ class ExclusaoDadosJdbc implements ExclusaoDadosRepositorio {
     @Override
     public Optional<UUID> bloquearEBuscarUsuarioOpenWearables(UUID idosoId) {
         bloquear(idosoId.toString());
-        var vinculo = jdbc.queryForList("SELECT usuario_id FROM usuario_open_wearables WHERE idoso_id = ?",
+        return jdbc.queryForList("SELECT usuario_id FROM usuario_open_wearables WHERE idoso_id = ?",
                 UUID.class, idosoId).stream().findFirst();
-        if (vinculo.isEmpty() && Boolean.TRUE.equals(jdbc.queryForObject("""
-                SELECT EXISTS (SELECT 1 FROM medicao WHERE idoso_id = ?
-                               UNION ALL SELECT 1 FROM agregado_diario WHERE idoso_id = ?)
-                """, Boolean.class, idosoId, idosoId))) {
-            throw new IllegalStateException("Exclusão aguardando a reconciliação do vínculo com o Open Wearables");
-        }
-        return vinculo;
     }
 
     @Override

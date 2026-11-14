@@ -12,4 +12,7 @@ public interface RegistroSincronizacaoAparelho {
      * @param nivelBateria nível informado na leitura, ou {@code null}
      */
     void registrar(UUID idosoId, Instant sincronizadoEm, Integer nivelBateria);
+
+    void registrarStatus(UUID idosoId, Instant sincronizadoEm, Integer nivelBateria,
+                         String versaoApp, String modeloCelular, String sistemaOperacional);
 }

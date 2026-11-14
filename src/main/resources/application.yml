@@ -62,6 +62,10 @@ management:
         enabled: true
 
 telemetry:
+  coleta:
+    cron: "${TELEMETRY_COLETA_CRON:0 */15 * * * *}"
+    fuso: "${TELEMETRY_HOJE_FUSO:America/Sao_Paulo}"
+    segredo-vinculo: "${OPENWEARABLES_VINCULO_SECRET:}"
   hoje:
     # Fuso que define o "dia" do resumo diário (RF-025) e da consulta de hoje.
     fuso: ${TELEMETRY_HOJE_FUSO:America/Sao_Paulo}
