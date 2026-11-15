@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 
 import com.seniorinsight.telemetry.ServidorHttpFalso;
@@ -26,6 +27,10 @@ import org.springframework.web.client.RestClient;
 class ClienteOpenWearablesTest {
 
     private static final UUID USUARIO = UUID.fromString("0b8f3c52-7d1e-4a3b-9c1d-2e5f6a7b8c9d");
+    private static final String REFERENCIA = "si-telemetry:teste";
+    private static final String USUARIO_JSON = """
+            {"id":"%s","external_user_id":"%s"}
+            """.formatted(USUARIO, REFERENCIA);
     private static final Instant INICIO = Instant.parse("2026-10-31T00:00:00Z");
     private static final Instant FIM = Instant.parse("2026-10-31T00:15:00Z");
 
@@ -47,7 +52,7 @@ class ClienteOpenWearablesTest {
 
     private final ClienteOpenWearables cliente = new ClienteOpenWearables(
             OpenWearablesConfig.restClient(RestClient.builder(), new PropriedadesOpenWearables(
-                    true, servidor.url(), "chave-teste", Duration.ofSeconds(1), Duration.ofMillis(300))),
+                    true, servidor.url(), "chave-teste", Duration.ofSeconds(1), Duration.ofMillis(750))),
             circuitBreaker, retry);
 
     @AfterEach
@@ -57,16 +62,47 @@ class ClienteOpenWearablesTest {
 
     @Test
     void provisionaUsuarioEnviandoAChaveNoHeader() {
-        servidor.responder(201, """
-                {"id": "%s", "created_at": "2026-10-31T10:00:00Z", "has_active_connection": false}
-                """.formatted(USUARIO));
+        servidor.responder(201, USUARIO_JSON);
 
-        assertThat(cliente.provisionarUsuario()).isEqualTo(USUARIO);
+        assertThat(cliente.provisionarUsuario(REFERENCIA)).isEqualTo(USUARIO);
 
         ServidorHttpFalso.Requisicao requisicao = servidor.requisicoes().getFirst();
         assertThat(requisicao.metodo()).isEqualTo("POST");
         assertThat(requisicao.caminho()).isEqualTo("/api/v1/users");
         assertThat(requisicao.header("X-Open-Wearables-API-Key")).isEqualTo("chave-teste");
+    }
+
+    @Test
+    void recuperaUsuarioPelaReferenciaQuandoJaFoiProvisionado() {
+        servidor.responder(409, "{}");
+        servidor.responder(200, """
+                {"items":[%s],"total":1}
+                """.formatted(USUARIO_JSON));
+
+        assertThat(cliente.provisionarUsuario(REFERENCIA)).isEqualTo(USUARIO);
+        assertThat(servidor.requisicoes().get(1).query()).contains("external_user_id=" + REFERENCIA);
+    }
+
+    @Test
+    void excluiUsuarioEReconheceReentregaQuandoEleJaEstaAusente() {
+        servidor.responder(200, "{\"id\":\"%s\"}".formatted(USUARIO));
+        servidor.responder(404, "{\"detail\":\"User with ID: %s not found.\"}".formatted(USUARIO));
+
+        cliente.excluirUsuario(USUARIO);
+        cliente.excluirUsuario(USUARIO);
+
+        assertThat(servidor.requisicoes()).allSatisfy(requisicao -> {
+            assertThat(requisicao.metodo()).isEqualTo("DELETE");
+            assertThat(requisicao.caminho()).isEqualTo("/api/v1/users/" + USUARIO);
+        });
+    }
+
+    @Test
+    void erroGenerico404NaoConfirmaExclusao() {
+        servidor.responder(404, "{\"detail\":\"Not Found\"}");
+
+        assertThatThrownBy(() -> cliente.excluirUsuario(USUARIO))
+                .isInstanceOf(OpenWearablesIndisponivelException.class);
     }
 
     @Test
@@ -81,7 +117,7 @@ class ClienteOpenWearablesTest {
                  "pagination": {"next_cursor": null, "has_more": false}}
                 """);
 
-        assertThat(cliente.buscarLeituras(USUARIO, INICIO, FIM)).containsExactly(
+        assertThat(cliente.buscarLeituras(USUARIO, INICIO, FIM, Set.of("heart_rate", "steps"))).containsExactly(
                 new Leitura("heart_rate", Instant.parse("2026-10-31T00:05:00Z"), 72, "bpm", "apple"),
                 new Leitura("steps", Instant.parse("2026-10-31T00:10:00Z"), 120, "count", "open_wearables"));
 
@@ -89,15 +125,15 @@ class ClienteOpenWearablesTest {
         ServidorHttpFalso.Requisicao primeira = servidor.requisicoes().get(0);
         assertThat(primeira.caminho()).isEqualTo("/api/v1/users/" + USUARIO + "/timeseries");
         assertThat(primeira.query()).contains("start_time=2026-10-31T00:00:00Z", "end_time=2026-10-31T00:15:00Z")
-                .doesNotContain("cursor");
-        assertThat(servidor.requisicoes().get(1).query()).contains("cursor=c2");
+                .contains("types=heart_rate,steps").doesNotContain("cursor");
+        assertThat(servidor.requisicoes().get(1).query()).contains("cursor=c2", "types=heart_rate,steps");
     }
 
     @Test
     void repeteQuandoOServidorFalha() {
-        servidor.responder(503, "{}").responder(502, "{}").responder(201, "{\"id\": \"%s\"}".formatted(USUARIO));
+        servidor.responder(503, "{}").responder(502, "{}").responder(201, USUARIO_JSON);
 
-        assertThat(cliente.provisionarUsuario()).isEqualTo(USUARIO);
+        assertThat(cliente.provisionarUsuario(REFERENCIA)).isEqualTo(USUARIO);
         assertThat(servidor.requisicoes()).hasSize(3);
     }
 
@@ -105,7 +141,7 @@ class ClienteOpenWearablesTest {
     void naoRepeteErroDoCliente() {
         servidor.responder(404, "{\"detail\": \"User not found\"}");
 
-        assertThatThrownBy(() -> cliente.buscarLeituras(USUARIO, INICIO, FIM))
+        assertThatThrownBy(() -> cliente.buscarLeituras(USUARIO, INICIO, FIM, Set.of("steps")))
                 .isInstanceOf(HttpClientErrorException.NotFound.class);
         assertThat(servidor.requisicoes()).hasSize(1);
     }
@@ -116,7 +152,7 @@ class ClienteOpenWearablesTest {
             servidor.responderComAtraso(Duration.ofSeconds(2), 201, "{\"id\": \"%s\"}".formatted(USUARIO));
         }
 
-        assertThatThrownBy(cliente::provisionarUsuario)
+        assertThatThrownBy(() -> cliente.provisionarUsuario(REFERENCIA))
                 .isInstanceOf(OpenWearablesIndisponivelException.class)
                 .hasCauseInstanceOf(ResourceAccessException.class);
         assertThat(servidor.requisicoes()).hasSize(3);
@@ -124,11 +160,12 @@ class ClienteOpenWearablesTest {
 
     @Test
     void circuitoAbreDepoisDeFalhasSeguidasEParaDeChamarOServidor() {
-        assertThatThrownBy(cliente::provisionarUsuario).isInstanceOf(OpenWearablesIndisponivelException.class);
-        assertThatThrownBy(cliente::provisionarUsuario)
+        assertThatThrownBy(() -> cliente.provisionarUsuario(REFERENCIA))
+                .isInstanceOf(OpenWearablesIndisponivelException.class);
+        assertThatThrownBy(() -> cliente.provisionarUsuario(REFERENCIA))
                 .isInstanceOf(OpenWearablesIndisponivelException.class)
                 .hasCauseInstanceOf(CallNotPermittedException.class);
-        assertThatThrownBy(cliente::provisionarUsuario)
+        assertThatThrownBy(() -> cliente.provisionarUsuario(REFERENCIA))
                 .isInstanceOf(OpenWearablesIndisponivelException.class)
                 .hasCauseInstanceOf(CallNotPermittedException.class);
 

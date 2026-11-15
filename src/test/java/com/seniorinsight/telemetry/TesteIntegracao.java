@@ -10,15 +10,17 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
 /**
- * Contexto completo com PostgreSQL e RabbitMQ do Testcontainers. Todos os testes de integração usam a mesma
- * configuração, então o Spring reaproveita um único contexto (e um único par de containers).
+ * Contexto completo com PostgreSQL, RabbitMQ e Redis do Testcontainers. Todos os testes de integração usam a mesma
+ * configuração, então o Spring reaproveita um único contexto (e um único conjunto de containers).
  *
  * <p>O issuer do Keycloak é fictício: o decoder só é criado na primeira validação de token, e os testes autenticam
  * com {@code jwt()} do spring-security-test. Os {@link TratadoresTeste} só reagem a eventos {@code teste.*}.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@SpringBootTest(properties = "KEYCLOAK_ISSUER_URI=http://keycloak.invalid/realms/seniorinsight")
+@SpringBootTest(properties = {
+        "KEYCLOAK_ISSUER_URI=http://keycloak.invalid/realms/seniorinsight",
+        "telemetry.hoje.cache-redis-ativo=true"})
 @AutoConfigureMockMvc
 @Import({ContainersConfig.class, TratadoresTeste.class})
 public @interface TesteIntegracao {
