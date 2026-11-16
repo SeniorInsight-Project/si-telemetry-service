@@ -121,7 +121,7 @@ class ClienteOpenWearables implements OpenWearables {
         List<Leitura> leituras = new ArrayList<>();
         var series = tipos.stream().filter(tipo -> !"sleep".equals(tipo)).sorted().toList();
         if (!series.isEmpty()) {
-            buscarSeries(usuarioOpenWearables, inicio, fim, Set.copyOf(series), String.join(",", series), leituras);
+            buscarSeries(usuarioOpenWearables, inicio, fim, Set.copyOf(series), series, leituras);
         }
         if (tipos.contains("sleep")) {
             buscarSono(usuarioOpenWearables, inicio, fim, leituras);
@@ -129,13 +129,13 @@ class ClienteOpenWearables implements OpenWearables {
         return leituras;
     }
 
-    private void buscarSeries(UUID usuario, Instant inicio, Instant fim, Set<String> tipos, String filtro,
+    private void buscarSeries(UUID usuario, Instant inicio, Instant fim, Set<String> tipos, List<String> filtros,
                               List<Leitura> leituras) {
         String cursor = null;
         do {
             String cursorAtual = cursor;
             PaginaAmostras pagina = chamar("buscar leituras", () -> restClient.get()
-                    .uri(uri -> urlSerieTemporal(uri, usuario, inicio, fim, filtro, cursorAtual))
+                    .uri(uri -> urlSerieTemporal(uri, usuario, inicio, fim, filtros, cursorAtual))
                     .retrieve()
                     .body(PaginaAmostras.class));
             if (pagina == null || pagina.data() == null) {
@@ -154,7 +154,7 @@ class ClienteOpenWearables implements OpenWearables {
             PaginaSono pagina = chamar("buscar sessões de sono", () -> restClient.get().uri(uri -> {
                 uri.path("/api/v1/users/{usuario}/events/sleep")
                         .queryParam("start_date", inicio).queryParam("end_date", fim)
-                        .queryParam("source_selection", "per_session").queryParam("limit", TAMANHO_PAGINA);
+                        .queryParam("limit", TAMANHO_PAGINA);
                 if (cursorAtual != null) {
                     uri.queryParam("cursor", cursorAtual);
                 }
@@ -163,7 +163,8 @@ class ClienteOpenWearables implements OpenWearables {
             if (pagina == null || pagina.data() == null) {
                 throw new OpenWearablesIndisponivelException("Resposta inválida para sono do Open Wearables", null);
             }
-            pagina.data().stream().filter(sessao -> sessao.finalizada() && sessao.inicio() != null
+            pagina.data().stream().filter(sessao -> (sessao.finalizada() == null || sessao.finalizada())
+                            && sessao.inicio() != null
                             && !sessao.inicio().isBefore(inicio) && sessao.fim() != null && sessao.segundos() != null)
                     .map(sessao -> new Leitura("sleep", sessao.fim(), sessao.segundos(), "s", origem(sessao.source())))
                     .forEach(leituras::add);
@@ -183,12 +184,12 @@ class ClienteOpenWearables implements OpenWearables {
     }
 
     private static URI urlSerieTemporal(UriBuilder uri, UUID usuario, Instant inicio, Instant fim,
-                                    String tipos, String cursor) {
+                                    List<String> tipos, String cursor) {
         uri.path("/api/v1/users/{usuario}/timeseries")
                 .queryParam("start_time", inicio)
                 .queryParam("end_time", fim)
-                .queryParam("types", tipos)
                 .queryParam("limit", TAMANHO_PAGINA);
+        tipos.forEach(tipo -> uri.queryParam("types", tipo));
         if (cursor != null) {
             uri.queryParam("cursor", cursor);
         }
@@ -228,7 +229,7 @@ class ClienteOpenWearables implements OpenWearables {
 
     record SessaoSono(@JsonProperty("start_time") Instant inicio, @JsonProperty("end_time") Instant fim,
                      @JsonProperty("sleep_duration_seconds") Integer segundos,
-                     @JsonProperty("is_final") boolean finalizada, Fonte source) {
+                     @JsonProperty("is_final") Boolean finalizada, Fonte source) {
     }
 
     record Paginacao(@JsonProperty("next_cursor") String nextCursor,
