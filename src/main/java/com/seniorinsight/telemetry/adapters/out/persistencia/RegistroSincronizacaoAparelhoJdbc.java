@@ -7,6 +7,9 @@ import java.util.UUID;
 import com.seniorinsight.telemetry.application.porta.saida.RegistroSincronizacaoAparelho;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.seniorinsight.telemetry.application.porta.saida.PublicadorEventos;
+import com.seniorinsight.telemetry.domain.evento.SinalRecuperado;
 
 /**
  * Upsert em {@code status_aparelho}: a sincronização e a bateria só avançam para leituras mais novas, e uma leitura
@@ -17,27 +20,50 @@ import org.springframework.stereotype.Repository;
 class RegistroSincronizacaoAparelhoJdbc implements RegistroSincronizacaoAparelho {
 
     private final JdbcClient jdbc;
+    private final PublicadorEventos eventos;
 
-    RegistroSincronizacaoAparelhoJdbc(JdbcClient jdbc) {
+    RegistroSincronizacaoAparelhoJdbc(JdbcClient jdbc, PublicadorEventos eventos) {
         this.jdbc = jdbc;
+        this.eventos = eventos;
     }
 
     @Override
+    @Transactional
     public void registrar(UUID idosoId, Instant sincronizadoEm, Integer nivelBateria) {
+        registrarStatus(idosoId, sincronizadoEm, nivelBateria, null, null, null);
+    }
+
+    @Override
+    @Transactional
+    public void registrarStatus(UUID idosoId, Instant sincronizadoEm, Integer nivelBateria,
+                                String versaoApp, String modeloCelular, String sistemaOperacional) {
         jdbc.sql("""
-                INSERT INTO status_aparelho AS s (idoso_id, nivel_bateria, ultima_sincronizacao_em)
-                VALUES (:idosoId, :bateria, :sincronizadoEm)
+                INSERT INTO status_aparelho AS s (idoso_id, nivel_bateria, ultima_sincronizacao_em,
+                                                  versao_app, modelo_celular, sistema_operacional)
+                VALUES (:idosoId, :bateria, :sincronizadoEm, :versao, :modelo, :sistema)
                 ON CONFLICT (idoso_id) DO UPDATE
                     SET ultima_sincronizacao_em = EXCLUDED.ultima_sincronizacao_em,
                         nivel_bateria = COALESCE(EXCLUDED.nivel_bateria, s.nivel_bateria),
-                        sinal_perdido_desde = NULL,
+                        versao_app = COALESCE(EXCLUDED.versao_app, s.versao_app),
+                        modelo_celular = COALESCE(EXCLUDED.modelo_celular, s.modelo_celular),
+                        sistema_operacional = COALESCE(EXCLUDED.sistema_operacional, s.sistema_operacional),
                         atualizado_em = now()
                   WHERE s.ultima_sincronizacao_em IS NULL
                      OR s.ultima_sincronizacao_em < EXCLUDED.ultima_sincronizacao_em
                 """)
                 .param("idosoId", idosoId)
                 .param("bateria", nivelBateria)
+                .param("versao", versaoApp)
+                .param("modelo", modeloCelular)
+                .param("sistema", sistemaOperacional)
                 .param("sincronizadoEm", sincronizadoEm.atOffset(ZoneOffset.UTC))
                 .update();
+        int recuperados = jdbc.sql("""
+                UPDATE status_aparelho SET sinal_perdido_desde = NULL, atualizado_em = now()
+                 WHERE idoso_id = :id AND sinal_perdido_desde < :instante
+                   AND ultima_sincronizacao_em = :instante
+                """)
+                .param("id", idosoId).param("instante", sincronizadoEm.atOffset(ZoneOffset.UTC)).update();
+        if (recuperados == 1) eventos.publicar(new SinalRecuperado(idosoId, sincronizadoEm));
     }
 }

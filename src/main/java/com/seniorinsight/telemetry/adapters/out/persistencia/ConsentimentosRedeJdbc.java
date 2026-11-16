@@ -32,7 +32,14 @@ class ConsentimentosRedeJdbc implements ConsentimentosRede {
     }
 
     @Override
+    public void bloquear(UUID idosoId) {
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:idosoId, 0))")
+                .param("idosoId", idosoId.toString()).query((rs, linha) -> true).single();
+    }
+
+    @Override
     public void atualizar(UUID idosoId, TipoDado tipo, boolean autorizado, Instant ocorridoEm) {
+        bloquear(idosoId);
         jdbc.sql("""
                 INSERT INTO consentimento_rede AS c (idoso_id, tipo, autorizado, ocorrido_em)
                 VALUES (:idosoId, :tipo, :autorizado, :ocorridoEm)

@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.UUID;
 
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationInfo;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
@@ -29,11 +31,13 @@ class EstruturaBancoTest {
 
     @Test
     void flywayAplicaAsMigracoesNoSchemaTelemetry() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
+        assertThat(flyway.info().applied()).extracting(MigrationInfo::getVersion)
+                .contains(MigrationVersion.fromVersion("1"), MigrationVersion.fromVersion("2"),
+                        MigrationVersion.fromVersion("3"), MigrationVersion.fromVersion("4"));
         assertThat(jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'telemetry'", String.class))
                 .contains("medicao", "agregado_diario", "status_aparelho", "outbox_evento", "evento_recebido", "consentimento_rede",
-                        "flyway_schema_history");
+                        "flyway_schema_history", "titular_excluido", "exclusao_confirmada", "usuario_open_wearables");
     }
 
     @Test

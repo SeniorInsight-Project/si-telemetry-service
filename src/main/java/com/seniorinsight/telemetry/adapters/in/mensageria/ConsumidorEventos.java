@@ -28,7 +28,10 @@ class ConsumidorEventos {
 
     private final ReceberEvento receberEvento;
 
-    ConsumidorEventos(ReceberEvento receberEvento) {
+    private final PedidoExclusaoJson pedidos;
+
+    ConsumidorEventos(ReceberEvento receberEvento, PedidoExclusaoJson pedidos) {
+        this.pedidos = pedidos;
         this.receberEvento = receberEvento;
     }
 
@@ -46,7 +49,11 @@ class ConsumidorEventos {
         }
 
         try {
-            receberEvento.receber(evento);
+            if (PedidoExclusaoJson.TIPO.equals(evento.tipo())) {
+                pedidos.tratar(evento.id(), evento.payload());
+            } else {
+                receberEvento.receber(evento);
+            }
         } catch (RuntimeException e) {
             log.error("Falha ao processar o evento {} ({}), enviado para a dead-letter", evento.id(), evento.tipo(), e);
             canal.basicReject(tag, false);

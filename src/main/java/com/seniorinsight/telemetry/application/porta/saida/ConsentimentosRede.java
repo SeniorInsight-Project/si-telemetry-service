@@ -11,6 +11,8 @@ public interface ConsentimentosRede {
 
     Set<TipoDado> tiposAutorizados(UUID idosoId);
 
+    void bloquear(UUID idosoId);
+
     /** Grava o estado do tipo se {@code ocorridoEm} for mais novo que o gravado; no empate, a revogação vence. */
     void atualizar(UUID idosoId, TipoDado tipo, boolean autorizado, Instant ocorridoEm);
 }
