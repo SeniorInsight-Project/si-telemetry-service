@@ -142,9 +142,12 @@ Para tratar um novo tipo de evento, crie um bean `TratadorEvento` (em `applicati
 
 ## Open Wearables
 
-O cliente fica em `adapters.out.openwearables` e implementa a porta `OpenWearables` (`provisionarUsuario` e `buscarLeituras`), sobre a API REST do Open Wearables (`POST /api/v1/users` e `GET /api/v1/users/{id}/timeseries`, paginada por cursor). Cada requisição tem:
+A integração suporta o Open Wearables 0.9.0, versão fixada no si-infra.
+O cliente fica em `adapters.out.openwearables` e implementa a porta `OpenWearables` (`provisionarUsuario` e `buscarLeituras`), sobre a API REST do Open Wearables (`POST /api/v1/users`, `GET /api/v1/users/{id}/timeseries` e `GET /api/v1/users/{id}/events/sleep`, paginadas por cursor). Cada requisição tem:
 
 - timeout de conexão (2 s) e de leitura (10 s);
+- tipos de séries enviados como parâmetros `types` repetidos, conforme a API 0.9.0;
+- sessões de sono sem `is_final` tratadas como finais; `source_selection` não é enviado porque não faz parte da API 0.9.0;
 - retry (instância `openWearables`): até 3 tentativas com backoff exponencial a partir de 0,5 s, só em falha de rede/timeout e 5xx;
 - circuit breaker (instância `openWearables`): abre com 50% de falha em 10 chamadas (mínimo 5) e fica aberto 30 s.
 

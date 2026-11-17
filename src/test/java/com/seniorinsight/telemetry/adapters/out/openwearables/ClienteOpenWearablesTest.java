@@ -125,8 +125,30 @@ class ClienteOpenWearablesTest {
         ServidorHttpFalso.Requisicao primeira = servidor.requisicoes().get(0);
         assertThat(primeira.caminho()).isEqualTo("/api/v1/users/" + USUARIO + "/timeseries");
         assertThat(primeira.query()).contains("start_time=2026-10-31T00:00:00Z", "end_time=2026-10-31T00:15:00Z")
-                .contains("types=heart_rate,steps").doesNotContain("cursor");
-        assertThat(servidor.requisicoes().get(1).query()).contains("cursor=c2", "types=heart_rate,steps");
+                .contains("types=heart_rate", "types=steps")
+                .doesNotContain("types=heart_rate,steps", "cursor");
+        assertThat(servidor.requisicoes().get(1).query()).contains("cursor=c2", "types=heart_rate", "types=steps");
+    }
+
+    @Test
+    void aceitaSonoDaVersao090SemIsFinalEMantemSessaoExplicitamenteNaoFinalizadaFora() {
+        servidor.responder(200, """
+                {"data": [
+                    {"start_time": "2026-10-31T00:01:00Z", "end_time": "2026-10-31T06:00:00Z",
+                     "sleep_duration_seconds": 28800, "source": {"provider": "apple"}},
+                    {"start_time": "2026-10-31T10:00:00Z", "end_time": "2026-10-31T10:30:00Z",
+                     "sleep_duration_seconds": 1800, "is_final": false, "source": {"provider": "apple"}}
+                 ],
+                 "pagination": {"next_cursor": null, "has_more": false}}
+                """);
+
+        assertThat(cliente.buscarLeituras(USUARIO, INICIO, FIM, Set.of("sleep"))).containsExactly(
+                new Leitura("sleep", Instant.parse("2026-10-31T06:00:00Z"), 28800, "s", "apple"));
+
+        ServidorHttpFalso.Requisicao requisicao = servidor.requisicoes().getFirst();
+        assertThat(requisicao.caminho()).isEqualTo("/api/v1/users/" + USUARIO + "/events/sleep");
+        assertThat(requisicao.query()).contains("start_date=2026-10-31T00:00:00Z", "end_date=2026-10-31T00:15:00Z",
+                "limit=100").doesNotContain("source_selection");
     }
 
     @Test
