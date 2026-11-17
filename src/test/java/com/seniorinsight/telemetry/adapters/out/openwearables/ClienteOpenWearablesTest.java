@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.seniorinsight.telemetry.ServidorHttpFalso;
+import com.seniorinsight.telemetry.application.porta.saida.OpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.OpenWearablesIndisponivelException;
 import com.seniorinsight.telemetry.domain.medicao.Leitura;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -28,6 +29,8 @@ class ClienteOpenWearablesTest {
 
     private static final UUID USUARIO = UUID.fromString("0b8f3c52-7d1e-4a3b-9c1d-2e5f6a7b8c9d");
     private static final String REFERENCIA = "si-telemetry:teste";
+    private static final String APP_ID = "senior-insight";
+    private static final String APP_SECRET = "segredo-da-aplicacao";
     private static final String USUARIO_JSON = """
             {"id":"%s","external_user_id":"%s"}
             """.formatted(USUARIO, REFERENCIA);
@@ -52,8 +55,9 @@ class ClienteOpenWearablesTest {
 
     private final ClienteOpenWearables cliente = new ClienteOpenWearables(
             OpenWearablesConfig.restClient(RestClient.builder(), new PropriedadesOpenWearables(
-                    true, servidor.url(), "chave-teste", Duration.ofSeconds(1), Duration.ofMillis(750))),
-            circuitBreaker, retry);
+                    true, servidor.url(), "chave-teste", APP_ID, APP_SECRET,
+                    Duration.ofSeconds(1), Duration.ofMillis(750))),
+            circuitBreaker, retry, APP_ID, APP_SECRET);
 
     @AfterEach
     void pararServidor() {
@@ -98,6 +102,23 @@ class ClienteOpenWearablesTest {
     }
 
     @Test
+    void emiteTokenSdkComCredenciaisDaAplicacao() {
+        servidor.responder(200, """
+                {"access_token":"access-sdk","token_type":"bearer","refresh_token":"refresh-sdk","expires_in":3600}
+                """);
+
+        assertThat(cliente.emitirTokenSdk(USUARIO))
+                .isEqualTo(new OpenWearables.SdkToken("access-sdk", "refresh-sdk"));
+
+        ServidorHttpFalso.Requisicao requisicao = servidor.requisicoes().getFirst();
+        assertThat(requisicao.metodo()).isEqualTo("POST");
+        assertThat(requisicao.caminho()).isEqualTo("/api/v1/users/" + USUARIO + "/token");
+        assertThat(requisicao.header("X-Open-Wearables-API-Key")).isEqualTo("chave-teste");
+        assertThat(requisicao.corpo()).contains("\"app_id\":\"" + APP_ID + "\"")
+                .contains("\"app_secret\":\"" + APP_SECRET + "\"");
+    }
+
+    @Test
     void erroGenerico404NaoConfirmaExclusao() {
         servidor.responder(404, "{\"detail\":\"Not Found\"}");
 
@@ -125,8 +146,30 @@ class ClienteOpenWearablesTest {
         ServidorHttpFalso.Requisicao primeira = servidor.requisicoes().get(0);
         assertThat(primeira.caminho()).isEqualTo("/api/v1/users/" + USUARIO + "/timeseries");
         assertThat(primeira.query()).contains("start_time=2026-10-31T00:00:00Z", "end_time=2026-10-31T00:15:00Z")
-                .contains("types=heart_rate,steps").doesNotContain("cursor");
-        assertThat(servidor.requisicoes().get(1).query()).contains("cursor=c2", "types=heart_rate,steps");
+                .contains("types=heart_rate", "types=steps")
+                .doesNotContain("types=heart_rate,steps", "cursor");
+        assertThat(servidor.requisicoes().get(1).query()).contains("cursor=c2", "types=heart_rate", "types=steps");
+    }
+
+    @Test
+    void aceitaSonoDaVersao090SemIsFinalEMantemSessaoExplicitamenteNaoFinalizadaFora() {
+        servidor.responder(200, """
+                {"data": [
+                    {"start_time": "2026-10-31T00:01:00Z", "end_time": "2026-10-31T06:00:00Z",
+                     "sleep_duration_seconds": 28800, "source": {"provider": "apple"}},
+                    {"start_time": "2026-10-31T10:00:00Z", "end_time": "2026-10-31T10:30:00Z",
+                     "sleep_duration_seconds": 1800, "is_final": false, "source": {"provider": "apple"}}
+                 ],
+                 "pagination": {"next_cursor": null, "has_more": false}}
+                """);
+
+        assertThat(cliente.buscarLeituras(USUARIO, INICIO, FIM, Set.of("sleep"))).containsExactly(
+                new Leitura("sleep", Instant.parse("2026-10-31T06:00:00Z"), 28800, "s", "apple"));
+
+        ServidorHttpFalso.Requisicao requisicao = servidor.requisicoes().getFirst();
+        assertThat(requisicao.caminho()).isEqualTo("/api/v1/users/" + USUARIO + "/events/sleep");
+        assertThat(requisicao.query()).contains("start_date=2026-10-31T00:00:00Z", "end_date=2026-10-31T00:15:00Z",
+                "limit=100").doesNotContain("source_selection");
     }
 
     @Test

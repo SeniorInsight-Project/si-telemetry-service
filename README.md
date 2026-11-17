@@ -61,6 +61,7 @@ O usuário do banco precisa poder criar o schema `telemetry` (ou o schema precis
 | `GET /actuator/health` (e `/liveness`, `/readiness`) | público |
 | `/swagger-ui.html` e `/v3/api-docs` | público |
 | `POST /v1/idosos/{idosoId}/telemetria` e `.../telemetria/lote` | token do próprio idoso |
+| `POST /v1/idosos/{idosoId}/open-wearables/sdk-token` | token do próprio idoso, com consentimento ativo |
 | todo o resto (as demais rotas `/api/v1/telemetry/...` chegam nas próximas issues) | token do Keycloak |
 
 O gateway faz `StripPrefix=3` + `PrefixPath=/v1`: `/api/v1/telemetry/idosos/{id}/telemetria` chega aqui como `/v1/idosos/{id}/telemetria`. O controller mapeia sempre `/v1/idosos/...`.
@@ -86,6 +87,8 @@ O `application.yml` não tem segredos; tudo vem do ambiente. O modelo está no [
 | `OPENWEARABLES_ENABLED` | `false` | Liga a leitura periódica do Open Wearables (si-telemetry-service#5) |
 | `OPENWEARABLES_BASE_URL` | `http://localhost:8000` | Endereço da API do Open Wearables (self-hosted) |
 | `OPENWEARABLES_API_KEY` | — | Chave da API, enviada no header `X-Open-Wearables-API-Key` |
+| `OPENWEARABLES_APP_ID` | — | ID da aplicação do Open Wearables, usado somente pelo backend para emitir tokens do SDK |
+| `OPENWEARABLES_APP_SECRET` | — | Segredo da aplicação do Open Wearables, usado somente pelo backend para emitir tokens do SDK |
 | `CARE_SERVICE_URL` | `http://localhost:8082` | Endereço do care-service, para a verificação de vínculo (RF-007) |
 | `TELEMETRY_REDIS_ENABLED` | `false` | Liga o cache de 15 min da rota de hoje no Redis; desligado, a rota lê do PostgreSQL |
 | `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Endereço do Redis, usado só com o cache ligado |
@@ -142,9 +145,12 @@ Para tratar um novo tipo de evento, crie um bean `TratadorEvento` (em `applicati
 
 ## Open Wearables
 
-O cliente fica em `adapters.out.openwearables` e implementa a porta `OpenWearables` (`provisionarUsuario` e `buscarLeituras`), sobre a API REST do Open Wearables (`POST /api/v1/users` e `GET /api/v1/users/{id}/timeseries`, paginada por cursor). Cada requisição tem:
+A integração suporta o Open Wearables 0.9.0, versão fixada no si-infra.
+O cliente fica em `adapters.out.openwearables` e implementa a porta `OpenWearables` (`provisionarUsuario`, `emitirTokenSdk` e `buscarLeituras`), sobre a API REST do Open Wearables (`POST /api/v1/users`, `POST /api/v1/users/{id}/token`, `GET /api/v1/users/{id}/timeseries` e `GET /api/v1/users/{id}/events/sleep`, paginadas por cursor). A integração de tokens segue o backend token flow do Open Wearables 0.9.0: `app_id` e `app_secret` ficam somente no backend; o app recebe `userId`, `accessToken`, `refreshToken` e o host para inicializar o SDK. Cada requisição tem:
 
 - timeout de conexão (2 s) e de leitura (10 s);
+- tipos de séries enviados como parâmetros `types` repetidos, conforme a API 0.9.0;
+- sessões de sono sem `is_final` tratadas como finais; `source_selection` não é enviado porque não faz parte da API 0.9.0;
 - retry (instância `openWearables`): até 3 tentativas com backoff exponencial a partir de 0,5 s, só em falha de rede/timeout e 5xx;
 - circuit breaker (instância `openWearables`): abre com 50% de falha em 10 chamadas (mínimo 5) e fica aberto 30 s.
 

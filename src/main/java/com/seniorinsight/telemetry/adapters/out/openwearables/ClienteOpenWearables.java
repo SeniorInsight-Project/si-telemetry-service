@@ -36,11 +36,20 @@ class ClienteOpenWearables implements OpenWearables {
     private final RestClient restClient;
     private final CircuitBreaker circuitBreaker;
     private final Retry retry;
+    private final String appId;
+    private final String appSecret;
 
     ClienteOpenWearables(RestClient restClient, CircuitBreaker circuitBreaker, Retry retry) {
+        this(restClient, circuitBreaker, retry, null, null);
+    }
+
+    ClienteOpenWearables(RestClient restClient, CircuitBreaker circuitBreaker, Retry retry,
+                         String appId, String appSecret) {
         this.restClient = restClient;
         this.circuitBreaker = circuitBreaker;
         this.retry = retry;
+        this.appId = appId;
+        this.appSecret = appSecret;
     }
 
     @Override
@@ -100,6 +109,23 @@ class ClienteOpenWearables implements OpenWearables {
         }
     }
 
+    @Override
+    public SdkToken emitirTokenSdk(UUID usuarioOpenWearables) {
+        if (appId == null || appId.isBlank() || appSecret == null || appSecret.isBlank()) {
+            throw new OpenWearablesIndisponivelException(
+                    "Credenciais da aplicação do Open Wearables não configuradas", null);
+        }
+        TokenResposta resposta = chamar("emitir token do SDK", () -> restClient.post()
+                .uri("/api/v1/users/{usuario}/token", usuarioOpenWearables)
+                .body(Map.of("app_id", appId, "app_secret", appSecret))
+                .retrieve().body(TokenResposta.class));
+        if (resposta == null || resposta.accessToken() == null || resposta.accessToken().isBlank()
+                || resposta.refreshToken() == null || resposta.refreshToken().isBlank()) {
+            throw new OpenWearablesIndisponivelException("Resposta inválida para token do SDK", null);
+        }
+        return new SdkToken(resposta.accessToken(), resposta.refreshToken());
+    }
+
     private static boolean usuarioJaAusente(HttpClientErrorException.NotFound erro, UUID usuario) {
         try {
             var resposta = erro.getResponseBodyAs(ErroExclusao.class);
@@ -121,7 +147,7 @@ class ClienteOpenWearables implements OpenWearables {
         List<Leitura> leituras = new ArrayList<>();
         var series = tipos.stream().filter(tipo -> !"sleep".equals(tipo)).sorted().toList();
         if (!series.isEmpty()) {
-            buscarSeries(usuarioOpenWearables, inicio, fim, Set.copyOf(series), String.join(",", series), leituras);
+            buscarSeries(usuarioOpenWearables, inicio, fim, Set.copyOf(series), series, leituras);
         }
         if (tipos.contains("sleep")) {
             buscarSono(usuarioOpenWearables, inicio, fim, leituras);
@@ -129,13 +155,13 @@ class ClienteOpenWearables implements OpenWearables {
         return leituras;
     }
 
-    private void buscarSeries(UUID usuario, Instant inicio, Instant fim, Set<String> tipos, String filtro,
+    private void buscarSeries(UUID usuario, Instant inicio, Instant fim, Set<String> tipos, List<String> filtros,
                               List<Leitura> leituras) {
         String cursor = null;
         do {
             String cursorAtual = cursor;
             PaginaAmostras pagina = chamar("buscar leituras", () -> restClient.get()
-                    .uri(uri -> urlSerieTemporal(uri, usuario, inicio, fim, filtro, cursorAtual))
+                    .uri(uri -> urlSerieTemporal(uri, usuario, inicio, fim, filtros, cursorAtual))
                     .retrieve()
                     .body(PaginaAmostras.class));
             if (pagina == null || pagina.data() == null) {
@@ -154,7 +180,7 @@ class ClienteOpenWearables implements OpenWearables {
             PaginaSono pagina = chamar("buscar sessões de sono", () -> restClient.get().uri(uri -> {
                 uri.path("/api/v1/users/{usuario}/events/sleep")
                         .queryParam("start_date", inicio).queryParam("end_date", fim)
-                        .queryParam("source_selection", "per_session").queryParam("limit", TAMANHO_PAGINA);
+                        .queryParam("limit", TAMANHO_PAGINA);
                 if (cursorAtual != null) {
                     uri.queryParam("cursor", cursorAtual);
                 }
@@ -163,7 +189,8 @@ class ClienteOpenWearables implements OpenWearables {
             if (pagina == null || pagina.data() == null) {
                 throw new OpenWearablesIndisponivelException("Resposta inválida para sono do Open Wearables", null);
             }
-            pagina.data().stream().filter(sessao -> sessao.finalizada() && sessao.inicio() != null
+            pagina.data().stream().filter(sessao -> (sessao.finalizada() == null || sessao.finalizada())
+                            && sessao.inicio() != null
                             && !sessao.inicio().isBefore(inicio) && sessao.fim() != null && sessao.segundos() != null)
                     .map(sessao -> new Leitura("sleep", sessao.fim(), sessao.segundos(), "s", origem(sessao.source())))
                     .forEach(leituras::add);
@@ -183,12 +210,12 @@ class ClienteOpenWearables implements OpenWearables {
     }
 
     private static URI urlSerieTemporal(UriBuilder uri, UUID usuario, Instant inicio, Instant fim,
-                                    String tipos, String cursor) {
+                                    List<String> tipos, String cursor) {
         uri.path("/api/v1/users/{usuario}/timeseries")
                 .queryParam("start_time", inicio)
                 .queryParam("end_time", fim)
-                .queryParam("types", tipos)
                 .queryParam("limit", TAMANHO_PAGINA);
+        tipos.forEach(tipo -> uri.queryParam("types", tipo));
         if (cursor != null) {
             uri.queryParam("cursor", cursor);
         }
@@ -217,6 +244,10 @@ class ClienteOpenWearables implements OpenWearables {
     record UsuarioCriado(UUID id, @JsonProperty("external_user_id") String referencia) {
     }
 
+    record TokenResposta(@JsonProperty("access_token") String accessToken,
+                         @JsonProperty("refresh_token") String refreshToken) {
+    }
+
     record PaginaUsuarios(List<UsuarioCriado> items, Integer total) {
     }
 
@@ -228,7 +259,7 @@ class ClienteOpenWearables implements OpenWearables {
 
     record SessaoSono(@JsonProperty("start_time") Instant inicio, @JsonProperty("end_time") Instant fim,
                      @JsonProperty("sleep_duration_seconds") Integer segundos,
-                     @JsonProperty("is_final") boolean finalizada, Fonte source) {
+                     @JsonProperty("is_final") Boolean finalizada, Fonte source) {
     }
 
     record Paginacao(@JsonProperty("next_cursor") String nextCursor,
