@@ -1,6 +1,8 @@
 package com.seniorinsight.telemetry.adapters.in.web;
 
 import com.seniorinsight.telemetry.application.acesso.AcessoNegadoException;
+import com.seniorinsight.telemetry.application.medicao.ConsentimentoNaoAtivoException;
+import com.seniorinsight.telemetry.application.porta.saida.OpenWearablesIndisponivelException;
 import com.seniorinsight.telemetry.application.porta.saida.VinculoIndisponivelException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,10 +22,22 @@ class TratamentoErros {
         return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, e.getMessage());
     }
 
+    @ExceptionHandler(ConsentimentoNaoAtivoException.class)
+    ProblemDetail consentimentoNaoAtivo(ConsentimentoNaoAtivoException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, e.getMessage());
+    }
+
     @ExceptionHandler(VinculoIndisponivelException.class)
     ProblemDetail vinculoIndisponivel(VinculoIndisponivelException e) {
         log.warn("Consulta de vínculo falhou: {}", e.getMessage());
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
                 "Não foi possível verificar o vínculo com o idoso. Tente de novo em instantes.");
+    }
+
+    @ExceptionHandler(OpenWearablesIndisponivelException.class)
+    ProblemDetail openWearablesIndisponivel(OpenWearablesIndisponivelException e) {
+        log.warn("Open Wearables indisponível: {}", e.getMessage());
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
+                "Não foi possível preparar a conexão com o Open Wearables. Tente de novo em instantes.");
     }
 }
