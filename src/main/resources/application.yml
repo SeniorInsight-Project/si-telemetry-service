@@ -93,6 +93,8 @@ telemetry:
     enabled: ${OPENWEARABLES_ENABLED:false}
     base-url: ${OPENWEARABLES_BASE_URL:http://localhost:8000}
     api-key: ${OPENWEARABLES_API_KEY:}
+    app-id: ${OPENWEARABLES_APP_ID:}
+    app-secret: ${OPENWEARABLES_APP_SECRET:}
     timeout-conexao: PT2S
     timeout-leitura: PT10S
   care-service:

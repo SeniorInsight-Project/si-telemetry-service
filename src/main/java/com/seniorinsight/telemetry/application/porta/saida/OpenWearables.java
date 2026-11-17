@@ -22,6 +22,12 @@ public interface OpenWearables {
 
     void excluirUsuario(UUID usuarioOpenWearables);
 
+    /** Emite credenciais de sessão restritas ao SDK móvel para o usuário provisionado. */
+    SdkToken emitirTokenSdk(UUID usuarioOpenWearables);
+
     /** Amostras dos tipos autorizados, juntando todas as páginas. Sem tipos, não consulta o provedor. */
     List<Leitura> buscarLeituras(UUID usuarioOpenWearables, Instant inicio, Instant fim, Set<String> tipos);
+
+    record SdkToken(String accessToken, String refreshToken) {
+    }
 }

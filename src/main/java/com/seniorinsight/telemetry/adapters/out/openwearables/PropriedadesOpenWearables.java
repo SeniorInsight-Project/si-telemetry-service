@@ -13,6 +13,8 @@ record PropriedadesOpenWearables(
         boolean enabled,
         String baseUrl,
         String apiKey,
+        String appId,
+        String appSecret,
         Duration timeoutConexao,
         Duration timeoutLeitura) {
 }

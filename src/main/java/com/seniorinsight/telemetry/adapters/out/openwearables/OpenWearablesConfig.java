@@ -29,7 +29,8 @@ class OpenWearablesConfig {
         return new ClienteOpenWearables(
                 restClient(builder, propriedades),
                 circuitBreakers.circuitBreaker(INSTANCIA_RESILIENCIA),
-                retries.retry(INSTANCIA_RESILIENCIA));
+                retries.retry(INSTANCIA_RESILIENCIA),
+                propriedades.appId(), propriedades.appSecret());
     }
 
     static RestClient restClient(RestClient.Builder builder, PropriedadesOpenWearables propriedades) {

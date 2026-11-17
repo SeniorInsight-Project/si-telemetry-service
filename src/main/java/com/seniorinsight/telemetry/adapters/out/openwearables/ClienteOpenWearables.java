@@ -36,11 +36,20 @@ class ClienteOpenWearables implements OpenWearables {
     private final RestClient restClient;
     private final CircuitBreaker circuitBreaker;
     private final Retry retry;
+    private final String appId;
+    private final String appSecret;
 
     ClienteOpenWearables(RestClient restClient, CircuitBreaker circuitBreaker, Retry retry) {
+        this(restClient, circuitBreaker, retry, null, null);
+    }
+
+    ClienteOpenWearables(RestClient restClient, CircuitBreaker circuitBreaker, Retry retry,
+                         String appId, String appSecret) {
         this.restClient = restClient;
         this.circuitBreaker = circuitBreaker;
         this.retry = retry;
+        this.appId = appId;
+        this.appSecret = appSecret;
     }
 
     @Override
@@ -98,6 +107,23 @@ class ClienteOpenWearables implements OpenWearables {
         } catch (RestClientException | OpenWearablesIndisponivelException e) {
             throw falhaExclusao();
         }
+    }
+
+    @Override
+    public SdkToken emitirTokenSdk(UUID usuarioOpenWearables) {
+        if (appId == null || appId.isBlank() || appSecret == null || appSecret.isBlank()) {
+            throw new OpenWearablesIndisponivelException(
+                    "Credenciais da aplicação do Open Wearables não configuradas", null);
+        }
+        TokenResposta resposta = chamar("emitir token do SDK", () -> restClient.post()
+                .uri("/api/v1/users/{usuario}/token", usuarioOpenWearables)
+                .body(Map.of("app_id", appId, "app_secret", appSecret))
+                .retrieve().body(TokenResposta.class));
+        if (resposta == null || resposta.accessToken() == null || resposta.accessToken().isBlank()
+                || resposta.refreshToken() == null || resposta.refreshToken().isBlank()) {
+            throw new OpenWearablesIndisponivelException("Resposta inválida para token do SDK", null);
+        }
+        return new SdkToken(resposta.accessToken(), resposta.refreshToken());
     }
 
     private static boolean usuarioJaAusente(HttpClientErrorException.NotFound erro, UUID usuario) {
@@ -216,6 +242,10 @@ class ClienteOpenWearables implements OpenWearables {
     }
 
     record UsuarioCriado(UUID id, @JsonProperty("external_user_id") String referencia) {
+    }
+
+    record TokenResposta(@JsonProperty("access_token") String accessToken,
+                         @JsonProperty("refresh_token") String refreshToken) {
     }
 
     record PaginaUsuarios(List<UsuarioCriado> items, Integer total) {
