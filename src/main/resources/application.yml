@@ -92,6 +92,8 @@ telemetry:
   open-wearables:
     enabled: ${OPENWEARABLES_ENABLED:false}
     base-url: ${OPENWEARABLES_BASE_URL:http://localhost:8000}
+    # Endereço que o celular usa para enviar os dados pelo SDK. Precisa ser alcançável fora da rede do Docker.
+    public-url: ${OPENWEARABLES_PUBLIC_URL:${telemetry.open-wearables.base-url}}
     api-key: ${OPENWEARABLES_API_KEY:}
     app-id: ${OPENWEARABLES_APP_ID:}
     app-secret: ${OPENWEARABLES_APP_SECRET:}

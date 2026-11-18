@@ -85,7 +85,8 @@ O `application.yml` não tem segredos; tudo vem do ambiente. O modelo está no [
 | `KEYCLOAK_ISSUER_URI` | — | Issuer do realm, ex.: `http://localhost:8180/realms/seniorinsight` |
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI` | — | Opcional: URL das chaves públicas quando o issuer não é acessível de dentro do serviço (Docker) |
 | `OPENWEARABLES_ENABLED` | `false` | Liga a leitura periódica do Open Wearables (si-telemetry-service#5) |
-| `OPENWEARABLES_BASE_URL` | `http://localhost:8000` | Endereço da API do Open Wearables (self-hosted) |
+| `OPENWEARABLES_BASE_URL` | `http://localhost:8000` | Endereço da API do Open Wearables (self-hosted) usado pelo backend |
+| `OPENWEARABLES_PUBLIC_URL` | valor de `OPENWEARABLES_BASE_URL` | Endereço da API do Open Wearables entregue ao celular no token do SDK; precisa ser alcançável pelo aparelho (nunca o nome interno do Docker) |
 | `OPENWEARABLES_API_KEY` | — | Chave da API, enviada no header `X-Open-Wearables-API-Key` |
 | `OPENWEARABLES_APP_ID` | — | ID da aplicação do Open Wearables, usado somente pelo backend para emitir tokens do SDK |
 | `OPENWEARABLES_APP_SECRET` | — | Segredo da aplicação do Open Wearables, usado somente pelo backend para emitir tokens do SDK |
