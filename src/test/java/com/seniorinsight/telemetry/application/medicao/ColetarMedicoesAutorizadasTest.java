@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import com.seniorinsight.telemetry.application.porta.saida.OpenWearables;
 import com.seniorinsight.telemetry.application.porta.saida.RegistroMedicoes;
+import com.seniorinsight.telemetry.application.porta.saida.RegistroSincronizacaoAparelho;
 import com.seniorinsight.telemetry.application.porta.saida.ConsentimentosRede;
 import com.seniorinsight.telemetry.application.porta.saida.VinculosOpenWearables;
 import com.seniorinsight.telemetry.domain.consentimento.TipoDado;
@@ -31,8 +32,10 @@ class ColetarMedicoesAutorizadasTest {
     private final OpenWearables openWearables = mock(OpenWearables.class);
     private final RegistroMedicoes registro = mock(RegistroMedicoes.class);
     private final VinculosOpenWearables vinculos = mock(VinculosOpenWearables.class);
+    private final RegistroSincronizacaoAparelho sincronizacao = mock(RegistroSincronizacaoAparelho.class);
     private final ColetarMedicoesAutorizadas coleta = new ColetarMedicoesAutorizadas(
-            consentimentos, openWearables, registro, TransactionOperations.withoutTransaction(), vinculos);
+            consentimentos, openWearables, registro, TransactionOperations.withoutTransaction(), vinculos,
+            sincronizacao);
 
     @Test
     void todosRevogadosPausamAConsultaAoProvedor() {
@@ -40,7 +43,23 @@ class ColetarMedicoesAutorizadasTest {
 
         coleta.coletar(IDOSO, USUARIO, INICIO, FIM);
 
-        verifyNoInteractions(openWearables, registro);
+        verifyNoInteractions(openWearables, registro, sincronizacao);
+    }
+
+    @Test
+    void leituraGravadaAvancaAUltimaSincronizacaoParaAMaisRecente() {
+        when(consentimentos.tiposAutorizados(IDOSO)).thenReturn(Set.of(TipoDado.BATIMENTOS));
+        when(vinculos.inicioAutorizado(IDOSO)).thenReturn(Optional.of(INICIO));
+        var antiga = new Leitura("heart_rate", INICIO, 70, "bpm", "teste");
+        var recente = new Leitura("heart_rate", INICIO.plusSeconds(600), 75, "bpm", "teste");
+        when(openWearables.buscarLeituras(USUARIO, INICIO, FIM, Set.of("heart_rate", "resting_heart_rate")))
+                .thenReturn(List.of(recente, antiga));
+
+        coleta.coletar(IDOSO, USUARIO, INICIO, FIM);
+
+        var ordem = inOrder(registro, sincronizacao);
+        ordem.verify(registro).registrar(IDOSO, List.of(recente, antiga));
+        ordem.verify(sincronizacao).registrar(IDOSO, recente.medidaEm(), null);
     }
 
     @Test
