@@ -10,7 +10,13 @@ import com.seniorinsight.telemetry.domain.acesso.Papel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-/** Prepara as credenciais restritas que o app usa para conectar o SDK ao Open Wearables. */
+/**
+ * Prepara as credenciais restritas que o app usa para conectar o SDK ao Open Wearables.
+ *
+ * <p>O host devolvido é o endereço público da API do Open Wearables, alcançável pelo celular. Não é o
+ * {@code base-url}: esse é o endereço interno (ex.: {@code http://ow-app:8000} na rede do Docker), que o
+ * aparelho não resolve. Com ele o SDK conecta ao Health Connect, mas nenhum envio de dados chega.</p>
+ */
 @Service
 public class EmitirTokenSdkOpenWearables {
 
@@ -23,7 +29,7 @@ public class EmitirTokenSdkOpenWearables {
 
     public EmitirTokenSdkOpenWearables(VerificarAcessoIdoso acesso, VincularOpenWearables vincular,
                                        OpenWearables openWearables,
-                                       @Value("${telemetry.open-wearables.base-url}") String apiHost) {
+                                       @Value("${telemetry.open-wearables.public-url}") String apiHost) {
         this.acesso = acesso;
         this.vincular = vincular;
         this.openWearables = openWearables;
